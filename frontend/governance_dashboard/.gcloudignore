@@ -1,0 +1,9 @@
+# Ignore all source code and local caches for a lightning-fast upload
+*
+
+# Allow only the files needed for Cloud Run and the pre-compiled Wasm/Web code
+!Dockerfile
+!nginx.conf
+!build/
+!build/web/
+!build/web/**

@@ -1,0 +1,14 @@
+name: dart_functional_node
+description: High-performance Cloud Run Dart Functional Node for Agent-First Enterprise
+version: 1.0.0
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  http: ^1.2.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^3.0.0

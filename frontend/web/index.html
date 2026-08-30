@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent-First Enterprise — CEO Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-dark: #090d16;
+    --card-bg: rgba(20, 29, 47, 0.7);
+    --card-border: rgba(56, 189, 248, 0.2);
+    --accent: #38bdf8;
+    --accent-glow: rgba(56, 189, 248, 0.35);
+    --accent2: #818cf8;
+    --success: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --text-main: #f1f5f9;
+    --text-muted: #94a3b8;
+    --code-bg: #0b1120;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: radial-gradient(circle at 50% 0%, #172554 0%, var(--bg-dark) 70%);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.15);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo-box {
+    width: 38px;
+    height: 38px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 0 16px var(--accent-glow);
+  }
+  .brand-title {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .brand-tag {
+    font-size: 11px;
+    background: rgba(129, 140, 248, 0.2);
+    color: #c7d2fe;
+    padding: 3px 8px;
+    border-radius: 20px;
+    border: 1px solid rgba(129, 140, 248, 0.4);
+    margin-left: 8px;
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .pill {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+  }
+  .pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #0284c7, #38bdf8);
+    color: #04101e;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 25px rgba(56, 189, 248, 0.5);
+  }
+
+  /* Main Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 24px;
+    padding: 28px 32px;
+    flex: 1;
+  }
+
+  /* Status Banner */
+  .status-banner {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(16px);
+    border-radius: 14px;
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .status-info h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .status-info p {
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .status-badges {
+    display: flex;
+    gap: 8px;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+  .badge-adk { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); }
+  .badge-dart { background: rgba(20, 184, 166, 0.2); color: #5eead4; border: 1px solid rgba(20, 184, 166, 0.4); }
+  .badge-finops { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4); }
+
+  /* Provider and Name Configuration Bar */
+  .provider-bar {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .provider-choice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .provider-choice label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .provider-btn-group {
+    display: flex;
+    background: rgba(11, 17, 32, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 8px;
+    padding: 3px;
+  }
+  .provider-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+  }
+  .provider-btn.active {
+    background: var(--accent);
+    color: #04101e;
+    box-shadow: 0 0 10px var(--accent-glow);
+  }
+  .repo-name-box {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .repo-name-box label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .repo-name-box input {
+    flex: 1;
+    background: rgba(11, 17, 32, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+
+  /* Proposal Cards Grid */
+  .proposals-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+  }
+  .proposals-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .proposal-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(16px);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .proposal-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 8px 30px rgba(56, 189, 248, 0.15);
+    transform: translateY(-2px);
+  }
+  .card-tag {
+    align-self: flex-start;
+    font-size: 11px;
+    font-weight: 700;
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+  }
+  .proposal-card h4 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.35;
+  }
+  .proposal-card p.desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 16px;
+    flex-grow: 1;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .chip {
+    font-size: 11px;
+    background: rgba(30, 41, 59, 0.8);
+    color: #94a3b8;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(148, 163, 184, 0.15);
+  }
+  .impact-row {
+    font-size: 12px;
+    color: var(--success);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+    font-weight: 600;
+  }
+  .btn-approve {
+    background: linear-gradient(135deg, #0284c7, #38bdf8);
+    color: #04101e;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.2s;
+  }
+  .btn-approve:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 0 15px var(--accent-glow);
+  }
+
+  /* Custom Prompt & Skip Cards */
+  .custom-card {
+    background: var(--card-bg);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .custom-card h5 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .custom-input-row {
+    display: flex;
+    gap: 10px;
+  }
+  .custom-input-row input {
+    flex: 1;
+    background: rgba(11, 17, 32, 0.8);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .btn-custom {
+    background: #4f46e5;
+    color: #fff;
+    font-weight: 600;
+    font-size: 13px;
+    padding: 0 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+  }
+  .skip-card {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 12px;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .skip-card p {
+    font-size: 13px;
+    color: #fca5a5;
+  }
+  .btn-skip {
+    background: transparent;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-skip:hover {
+    background: rgba(239, 68, 68, 0.15);
+  }
+
+  /* Output Deliverables Section */
+  .deliverables-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(16px);
+    border-radius: 14px;
+    padding: 24px;
+    display: none;
+  }
+  .tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+  }
+  .tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .tab-btn.active {
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent);
+  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  pre {
+    background: var(--code-bg);
+    padding: 16px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #e2e8f0;
+    overflow-x: auto;
+    border: 1px solid rgba(148, 163, 184, 0.1);
+  }
+
+  /* Right Sidebar (Logs) */
+  .sidebar {
+    background: rgba(11, 17, 32, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 14px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 120px);
+    position: sticky;
+    top: 90px;
+  }
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  }
+  .sidebar-header h4 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #cbd5e1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--success);
+    font-weight: 600;
+  }
+  .logs-container {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  .log-entry {
+    background: rgba(20, 29, 47, 0.6);
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+    color: #cbd5e1;
+    line-height: 1.5;
+    animation: fadeIn 0.25s ease-out;
+  }
+  .log-entry.dart { border-left-color: #14b8a6; }
+  .log-entry.ceo { border-left-color: #fbbf24; }
+  .log-entry.success { border-left-color: var(--success); }
+  .log-entry.skip { border-left-color: var(--danger); }
+  .log-time {
+    color: #64748b;
+    font-size: 10px;
+    margin-bottom: 2px;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+  }
+  .empty-state-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo-box">⚡</div>
+    <div>
+      <span class="brand-title">Agent-First Enterprise</span>
+      <span class="brand-tag">CEO Command Center</span>
+    </div>
+  </div>
+  <div class="header-actions">
+    <div class="pill">
+      <div class="pill-dot"></div>
+      <span>Fleet Ready (eur3 / europe-west1)</span>
+    </div>
+    <button id="btnTriggerDiscovery" class="btn-primary" onclick="triggerDiscovery()">
+      <span>⚡</span> Trigger Discovery Cycle
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- Main Workflow Area -->
+  <main>
+    <div class="status-banner">
+      <div class="status-info">
+        <h3>Fleet Orchestration Status</h3>
+        <p id="fleetStatusText">Awaiting Discovery Trigger</p>
+      </div>
+      <div class="status-badges">
+        <span class="badge badge-adk">Python ADK 2.0</span>
+        <span class="badge badge-dart">Dart Shelf Node</span>
+        <span class="badge badge-finops">Scale to Zero</span>
+      </div>
+    </div>
+
+    <!-- Decision Gate Area -->
+    <div id="proposalArea" style="display:none;">
+      
+      <!-- Provider & Repo Name Config Bar -->
+      <div class="provider-bar">
+        <div class="provider-choice">
+          <label>Target Git Host:</label>
+          <div class="provider-btn-group">
+            <button id="btnProviderGitHub" class="provider-btn active" onclick="setProvider('github')">
+              <span>🐙</span> GitHub
+            </button>
+            <button id="btnProviderGitLab" class="provider-btn" onclick="setProvider('gitlab')">
+              <span>🦊</span> GitLab
+            </button>
+          </div>
+        </div>
+        <div class="repo-name-box">
+          <label>Confirmed Project Name:</label>
+          <input type="text" id="repoNameInput" value="ephemeraflow-governed-fleet" />
+        </div>
+      </div>
+
+      <div class="proposals-header">
+        <span class="section-label">⚡ Proposals from Planner Agent (CEO Decision Gate)</span>
+        <span style="font-size:12px; color:var(--text-muted);" id="activeOppText">Opportunity: Google Cloud & Vertex AI Agent Challenge</span>
+      </div>
+
+      <div class="proposals-grid">
+        <!-- Idea A -->
+        <div class="proposal-card" id="cardIdeaA">
+          <div class="card-tag">CONCEPT A</div>
+          <h4>EphemeraFlow: Governed Multi-Agent Fleet</h4>
+          <p class="desc">A hybrid polyglot architecture combining Python ADK 2.0 reasoning with sub-millisecond Dart Shelf workers on Cloud Run, backed by Firestore Memory Banks and Pub/Sub event streams.</p>
+          <div class="chips">
+            <span class="chip">Google ADK 2.0</span>
+            <span class="chip">Dart Shelf</span>
+            <span class="chip">Cloud Run</span>
+            <span class="chip">Firestore</span>
+            <span class="chip">Pub/Sub</span>
+          </div>
+          <div class="impact-row">✓ Impact: 99.9% Uptime, 0ms LLM Idle Waiting Cost</div>
+          <button id="btnApproveA" class="btn-approve" onclick="selectAndApproveIdea('idea_a')">✓ Approve Concept A</button>
+        </div>
+
+        <!-- Idea B -->
+        <div class="proposal-card" id="cardIdeaB">
+          <div class="card-tag" style="background:rgba(129,140,248,0.15); color:var(--accent2); border-color:rgba(129,140,248,0.3);">CONCEPT B</div>
+          <h4>ArmorGuard: Row-Level Secure Multi-Tenant Hub</h4>
+          <p class="desc">A privacy-first autonomous agent platform with Cloud SQL PostgreSQL Row-Level Security, Vertex AI Model Armor prompt injection shields, and OpenTelemetry auditing.</p>
+          <div class="chips">
+            <span class="chip">Vertex AI Gemini</span>
+            <span class="chip">Cloud SQL RLS</span>
+            <span class="chip">Model Armor</span>
+            <span class="chip">OpenTelemetry</span>
+          </div>
+          <div class="impact-row">✓ Impact: Zero Cross-Tenant Leaks, Provable Security Traces</div>
+          <button id="btnApproveB" class="btn-approve" style="background:linear-gradient(135deg, #4f46e5, #818cf8);" onclick="selectAndApproveIdea('idea_b')">✓ Approve Concept B</button>
+        </div>
+      </div>
+
+      <!-- Custom Direction Card -->
+      <div class="custom-card">
+        <h5>Propose Custom Executive Direction</h5>
+        <div class="custom-input-row">
+          <input type="text" id="customInput" placeholder="Enter custom prototype directive for the technical fleet..." />
+          <button class="btn-custom" onclick="submitCustom()">Execute Custom</button>
+        </div>
+      </div>
+
+      <!-- Skip Implementation Card -->
+      <div class="skip-card">
+        <p>🛑 <strong>Skip Implementation:</strong> Halt current cycle and safely archive without cloud waste.</p>
+        <button id="btnSkip" class="btn-skip" onclick="skipImplementation()">Skip Implementation</button>
+      </div>
+    </div>
+
+    <!-- Deliverables Area -->
+    <div id="deliverablesArea" class="deliverables-card">
+      <div class="proposals-header">
+        <span class="section-label">✅ Autonomous Execution Package (Deliverables)</span>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('tab-arch', this)">1. Architecture Diagram</button>
+        <button id="tabRepoBtn" class="tab-btn" onclick="switchTab('tab-repo', this)">2. Repository Scaffolding</button>
+        <button class="tab-btn" onclick="switchTab('tab-demo', this)">3. 4-Min Demo Script</button>
+      </div>
+
+      <div id="tab-arch" class="tab-content active">
+<pre><code id="archDiagramContent">graph TD
+    User["Human-in-the-Loop CEO (Flutter Web)"] -->|Approvals / Monitor| FS[("Cloud Firestore State & Memory")]
+    User -->|REST / Webhooks| Orch["Python ADK 2.0 Orchestrator (Cloud Run)"]
+    Orch -->|Vertex AI Gemini 3.5| LLM["Vertex AI LLM Reasoning"]
+    Orch -->|IAM OIDC Bearer| DartNode["Dart Shelf Functional Node (Cloud Run)"]
+    DartNode -->|Async Push| PS[("Cloud Pub/Sub Topics")]
+    PS -->|Webhook Callback| Orch
+    DartNode -->|Scaffold / Commit| GitRepo["GitHub Repository: ephemeraflow-governed-fleet"]</code></pre>
+      </div>
+
+      <div id="tab-repo" class="tab-content">
+<pre><code id="repoDetailsContent">// Provisioned via Dart Shelf Functional Node on Cloud Run
+Provider       : GITHUB
+Repository URL : https://github.com/agents-first-enterprise/ephemeraflow-governed-fleet
+Project ID     : 24891024
+Visibility     : Public
+Committed Files:
+  - README.md (Auto-generated with setup, architecture, and agentic justification)
+  - LICENSE (MIT)
+  - .gitignore
+  - pubspec.yaml & Dockerfile</code></pre>
+      </div>
+
+      <div id="tab-demo" class="tab-content">
+<pre><code id="demoScriptContent"># 4-Minute Demo Video Script: EphemeraFlow: Governed Multi-Agent Fleet
+
+## [0:00 - 0:45] Instant Hook & Action Over Recall
+- Show live Google Cloud Run console with active agents.
+- Highlight the Flutter UI triggering the Scout Agent to parse live hackathon feeds.
+
+## [0:45 - 1:45] The 2-Idea CEO Decision Gate
+- Display the Planner Agent proposing Concept A vs. Concept B to the CEO.
+- Demonstrate CEO selecting 'EphemeraFlow: Governed Multi-Agent Fleet'.
+- Show CEO confirming project name and Git provider.
+- Show the instantaneous trigger to the Dart Functional Node provisioning the repo.
+
+## [1:45 - 2:45] Polyglot Execution & Zero LLM Overhead
+- Reveal the Dart Shelf logs parsing structured data with sub-millisecond response times.
+- Show Firestore session state updating seamlessly without dropped turns.
+
+## [2:45 - 4:00] Cloud Native Hardening & FinOps
+- Highlight min-instances=0 scale-to-zero configurations.
+- Conclude with the complete verifiable submission package.</code></pre>
+      </div>
+    </div>
+
+    <!-- Empty Initial State -->
+    <div id="emptyState" class="empty-state">
+      <div class="empty-state-icon">🤖</div>
+      <h3 style="font-size:18px; margin-bottom:8px;">Multi-Agent Fleet is Ready</h3>
+      <p style="font-size:13px; color:var(--text-muted); max-width:480px; margin:0 auto;">
+        Click <strong>"Trigger Discovery Cycle"</strong> at the top right to start scouting public competitions, selecting Git provider, and generating two structured prototype concepts.
+      </p>
+    </div>
+  </main>
+
+  <!-- Right Execution Traces Log Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h4><span>📜</span> Real-Time Fleet Traces</h4>
+      <div class="live-indicator">
+        <span class="pill-dot"></span>
+        <span>Active</span>
+      </div>
+    </div>
+    <div id="logsContainer" class="logs-container">
+      <div class="log-entry">
+        <div class="log-time">System Ready</div>
+        Cloud Run services and Dart nodes initialized in eur3 / europe-west1.
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+let currentProvider = 'github';
+
+function setProvider(provider) {
+  currentProvider = provider;
+  document.getElementById('btnProviderGitHub').classList.toggle('active', provider === 'github');
+  document.getElementById('btnProviderGitLab').classList.toggle('active', provider === 'gitlab');
+  addLog(`CEO Config: Selected Git host -> ${provider.toUpperCase()}`, 'ceo');
+}
+
+function addLog(msg, type='') {
+  const container = document.getElementById('logsContainer');
+  const now = new Date().toTimeString().split(' ')[0];
+  const div = document.createElement('div');
+  div.className = 'log-entry ' + type;
+  div.innerHTML = `<div class="log-time">${now}</div>${msg}`;
+  container.insertBefore(div, container.firstChild);
+}
+
+function triggerDiscovery() {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('deliverablesArea').style.display = 'none';
+  document.getElementById('fleetStatusText').innerText = 'Scouting Active Tracks & Synthesizing Proposals...';
+  
+  addLog('Scout Agent: Invoking Dart Functional Node (/tasks/parse-brief) with raw feed payload.', 'dart');
+  
+  setTimeout(() => {
+    addLog('Dart Node: Filtered 12 global hackathons -> Identified top match: "Google Cloud & Vertex AI Agent Challenge" ($100k prize pool).', 'dart');
+  }, 400);
+
+  setTimeout(() => {
+    addLog('Planner Agent: Formulated 2 competing high-ROI prototype proposals (Concept A vs Concept B).');
+    addLog('RequestInput: Yielded execution loop to Human CEO for decision, provider selection & project name.', 'ceo');
+    document.getElementById('fleetStatusText').innerText = 'CEO Decision Gate: Review Concepts & Confirm Provider/Project Name';
+    document.getElementById('proposalArea').style.display = 'block';
+  }, 900);
+}
+
+function selectAndApproveIdea(ideaKey) {
+  const confirmedName = document.getElementById('repoNameInput').value.trim() || (ideaKey === 'idea_a' ? 'ephemeraflow-governed-fleet' : 'armorguard-secure-agent-hub');
+  const title = ideaKey === 'idea_a' ? 'EphemeraFlow: Governed Multi-Agent Fleet' : 'ArmorGuard: Row-Level Secure Multi-Tenant Hub';
+  const provider = currentProvider.toUpperCase();
+  const repoUrl = currentProvider === 'github'
+    ? `https://github.com/agents-first-enterprise/${confirmedName}`
+    : `https://gitlab.com/agents-first-enterprise/${confirmedName}`;
+
+  document.getElementById('proposalArea').style.display = 'none';
+  document.getElementById('fleetStatusText').innerText = `Executing Pipeline on ${provider} for: "${title}"...`;
+
+  addLog(`CEO Action: Approved ${title} on ${provider} with repository name "${confirmedName}".`, 'ceo');
+
+  setTimeout(() => {
+    addLog(`Dart Functional Node: Provisioning ${provider} repository ${repoUrl}`, 'dart');
+  }, 500);
+
+  setTimeout(() => {
+    addLog('Architect Agent: Generated GCP system topology and Mermaid architecture diagram.');
+    document.getElementById('archDiagramContent').innerText = `graph TD\n    User["Human-in-the-Loop CEO (Flutter Web)"] -->|Approvals / Monitor| FS[("Cloud Firestore State & Memory")]\n    User -->|REST / Webhooks| Orch["Python ADK 2.0 Orchestrator (Cloud Run)"]\n    Orch -->|Vertex AI Gemini 3.5| LLM["Vertex AI LLM Reasoning"]\n    Orch -->|IAM OIDC Bearer| DartNode["Dart Shelf Functional Node (Cloud Run)"]\n    DartNode -->|Async Push| PS[("Cloud Pub/Sub Topics")]\n    PS -->|Webhook Callback| Orch\n    DartNode -->|Scaffold / Commit| GitRepo["${provider} Repository: ${confirmedName}"]`;
+  }, 900);
+
+  setTimeout(() => {
+    addLog('Lead Dev Agent: Generated backend services, Cloud Run configs, and tests.');
+    document.getElementById('repoDetailsContent').innerText = `// Provisioned via Dart Shelf Functional Node on Cloud Run\nProvider       : ${provider}\nRepository URL : ${repoUrl}\nProject ID     : ${Math.floor(10000000 + Math.random() * 90000000)}\nVisibility     : Public\nCommitted Files:\n  - README.md (Auto-generated with setup, architecture, and agentic justification)\n  - LICENSE (MIT)\n  - .gitignore\n  - pubspec.yaml & Dockerfile`;
+  }, 1300);
+
+  setTimeout(() => {
+    addLog('Marketing Agent: Assembled 4-minute demo script and Devpost submission package.', 'success');
+    document.getElementById('fleetStatusText').innerText = `Completed: "${title}" (${provider})`;
+    document.getElementById('deliverablesArea').style.display = 'block';
+  }, 1700);
+}
+
+function submitCustom() {
+  const customText = document.getElementById('customInput').value || 'Custom CEO Directive';
+  const confirmedName = document.getElementById('repoNameInput').value.trim() || 'custom-enterprise-prototype';
+  const provider = currentProvider.toUpperCase();
+  const repoUrl = currentProvider === 'github'
+    ? `https://github.com/agents-first-enterprise/${confirmedName}`
+    : `https://gitlab.com/agents-first-enterprise/${confirmedName}`;
+
+  document.getElementById('proposalArea').style.display = 'none';
+  document.getElementById('fleetStatusText').innerText = `Executing Pipeline on ${provider} for Custom Directive...`;
+
+  addLog(`CEO Action: Submitted custom direction: "${customText}" on ${provider} with name "${confirmedName}".`, 'ceo');
+
+  setTimeout(() => {
+    addLog(`Dart Functional Node: Scaffolding custom ${provider} repository ${repoUrl}`, 'dart');
+    addLog('Architect & Dev Agents: Generating custom components according to CEO specifications.');
+    addLog('Marketing Agent: Finalizing submission package.', 'success');
+    document.getElementById('fleetStatusText').innerText = `Completed: Custom CEO Prototype (${provider})`;
+    document.getElementById('deliverablesArea').style.display = 'block';
+  }, 1200);
+}
+
+function skipImplementation() {
+  document.getElementById('proposalArea').style.display = 'none';
+  document.getElementById('fleetStatusText').innerText = 'Pipeline Safely Halted (Skipped by CEO)';
+  addLog('CEO Action: Elected to Skip Implementation.', 'skip');
+  addLog('Supervisor: Acknowledged Skip command. Updating Firestore state. Zero cloud resources consumed.', 'skip');
+  setTimeout(() => {
+    document.getElementById('emptyState').style.display = 'block';
+  }, 1000);
+}
+
+function switchTab(tabId, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+</script>
+</body>
+</html>

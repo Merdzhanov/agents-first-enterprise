@@ -1,0 +1,44 @@
+# Internal documentation sources — not part of the published repo
+internal/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Generated docs (regenerate with internal/build_docs.py)
+docs/
+
+# Python virtual environments (126MB+ — never commit)
+.venv/
+venv/
+env/
+
+# Dart/Flutter tooling caches (any package in the repo)
+.dart_tool/
+build/
+
+# Regenerable Flutter web deploy bundle (rebuild with: flutter build web)
+frontend/governance_dashboard/deploy_web/
+
+# Secrets — never commit credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*service-account*.json
+*credentials*.json
+secrets/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+*.log
+*.tmp
+

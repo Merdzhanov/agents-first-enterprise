@@ -1,0 +1,67 @@
+steps:
+  # ==========================================
+  # SERVICE 1: ORCHESTRATOR (Python)
+  # ==========================================
+  # 1. Build the Python Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/orchestrator:$BUILD_ID'
+      - './services/orchestrator'
+
+  # 2. Push image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/orchestrator:$BUILD_ID'
+
+  # 3. Deploy to Cloud Run (with Secret Manager integration)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'orchestrator-service' 
+      - '--image'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/orchestrator:$BUILD_ID'
+      - '--region'
+      - 'europe-west1'
+      - '--min-instances'
+      - '0'
+      - '--set-secrets'
+      - 'GITHUB_TOKEN=github-token:latest,GITLAB_TOKEN=gitlab-token:latest'
+
+  # ==========================================
+  # SERVICE 2: DART NODE
+  # ==========================================
+  # 4. Build the Dart Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/dart-node:$BUILD_ID'
+      - './services/dart_node'
+
+  # 5. Push image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/dart-node:$BUILD_ID'
+
+  # 6. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'dart-node-service' 
+      - '--image'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/dart-node:$BUILD_ID'
+      - '--region'
+      - 'europe-west1'
+      - '--min-instances'
+      - '0'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
