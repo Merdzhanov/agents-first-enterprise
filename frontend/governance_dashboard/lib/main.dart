@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'services/api_service.dart';
 
 void main() {
@@ -54,7 +57,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = false;
   String _selectedFile = 'README.md';
 
-  final List<Map<String, dynamic>> _logs = [
+  // Live telemetry + discovery state (sourced from the real orchestrator).
+  static const String _sessionId = 'session_governance_001';
+  Timer? _telemetryTimer;
+  List<Map<String, dynamic>> _hackathons = [];
+  Map<String, dynamic> _activeOpportunity = {};
+  Map<String, dynamic> _ideaA = {};
+  Map<String, dynamic> _ideaB = {};
+
+  List<Map<String, dynamic>> _logs = [
     {
       'time': 'System Ready',
       'msg': 'Cloud Run services and Dart nodes initialized in eur3 / europe-west1.',
@@ -90,6 +101,88 @@ echo "Provisioning Google Cloud Run, Cloud SQL RLS & Firestore..."
 gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
   };
 
+  @override
+  void initState() {
+    super.initState();
+    _startTelemetryPolling();
+  }
+
+  @override
+  void dispose() {
+    _telemetryTimer?.cancel();
+    _nameController.dispose();
+    _customDirectiveController.dispose();
+    super.dispose();
+  }
+
+  /// Polls the orchestrator so the dashboard shows what the fleet is doing
+  /// right now — live session status plus real execution traces.
+  void _startTelemetryPolling() {
+    _refreshTelemetry();
+    _telemetryTimer =
+        Timer.periodic(const Duration(seconds: 3), (_) => _refreshTelemetry());
+  }
+
+  Future<void> _refreshTelemetry() async {
+    try {
+      final traces = await _api.getSessionTraces(_sessionId);
+      final session = await _api.getSessionState(_sessionId);
+      if (!mounted) return;
+      setState(() {
+        if (traces.isNotEmpty) {
+          _logs = traces.reversed.map((t) {
+            final agent = (t['agent_name'] ?? '').toString();
+            final msg = (t['msg'] ?? '').toString();
+            final prefixed =
+                agent.isEmpty || msg.startsWith(agent) ? msg : '$agent: $msg';
+            return {
+              'time': (t['time'] ?? '--:--:--').toString(),
+              'msg': prefixed,
+              'type': (t['type'] ?? 'system').toString(),
+            };
+          }).toList();
+        }
+        final status = (session['status'] ?? '').toString();
+        if (status.isNotEmpty) {
+          _statusText = switch (status) {
+            'awaiting_ceo_decision' =>
+              'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name',
+            'executing' =>
+              'Fleet executing — Architect → Lead Dev → Marketing in progress...',
+            'completed' =>
+              'Completed: prototype provisioned and submission packaged',
+            'skipped' => 'Pipeline Safely Halted (Skipped by CEO)',
+            _ => 'Fleet status: $status',
+          };
+        }
+      });
+    } catch (_) {
+      // Backend unreachable — keep last known state and local action logs.
+    }
+  }
+
+  /// Opens a hackathon page in a new browser tab (new tab on Flutter Web).
+  Future<void> _launchExternalUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.isEmpty) {
+      _addLog('ERROR: Invalid hackathon link — "$url".', 'error');
+      return;
+    }
+    _addLog('Opening hackathon page in a new browser tab: $url', 'system');
+    try {
+      final ok = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+        webOnlyWindowName: '_blank',
+      );
+      if (!ok) {
+        _addLog('ERROR: System refused to open $url.', 'error');
+      }
+    } catch (e) {
+      _addLog('ERROR: Could not open $url — $e', 'error');
+    }
+  }
+
   void _addLog(String msg, String type) {
     final now = DateTime.now();
     final timeStr =
@@ -111,12 +204,28 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
         'dart');
 
     try {
-      final result = await _api.triggerDiscovery();
+      final result = await _api.triggerDiscovery(sessionId: _sessionId);
       final message = result['message'] ?? 'Vertex AI synthesized 2 proposals.';
+      final hackathons = (result['hackathons'] as List? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+      final opportunity =
+          (result['opportunity'] as Map<String, dynamic>? ?? const {});
+      final data = result['data'];
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _hackathons = hackathons;
+        _activeOpportunity = opportunity;
+        if (data is Map<String, dynamic>) {
+          _ideaA = (data['idea_a'] as Map<String, dynamic>? ?? const {});
+          _ideaB = (data['idea_b'] as Map<String, dynamic>? ?? const {});
+        }
         _statusText = 'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name';
       });
+      _addLog(
+          'Scout Agent: Ranked ${hackathons.length} live hackathons — top 5 now on the Live Hackathon Board.',
+          'dart');
       _addLog('Planner Agent: $message', 'agent');
       _addLog(
           'RequestInput: Yielded execution loop to Human CEO for decision.',
@@ -130,7 +239,11 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
     }
   }
 
-  void _approveConcept(String conceptName, String defaultRepo) async {
+  void _approveConcept(
+    String conceptName,
+    String defaultRepo, {
+    String? decisionChoiceOverride,
+  }) async {
     final provider = _selectedProvider.toLowerCase();
     final repoName = _projectName.trim().isEmpty ? defaultRepo : _projectName.trim();
     final repoUrl = _selectedProvider == 'GitHub'
@@ -146,16 +259,17 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
         'CEO Action: Approved $conceptName on ${provider.toUpperCase()} with repository name "$repoName".',
         'ceo');
 
-    final decisionChoice = conceptName.contains('EphemeraFlow')
-        ? 'approve_idea_a'
-        : conceptName.contains('ArmorGuard')
-            ? 'approve_idea_b'
-            : 'custom_idea';
+    final decisionChoice = decisionChoiceOverride ??
+        (conceptName.toLowerCase().contains('ephemeraflow')
+            ? 'approve_idea_a'
+            : conceptName.toLowerCase().contains('armorguard')
+                ? 'approve_idea_b'
+                : 'custom_idea');
 
     final Map<String, dynamic> result;
     try {
       result = await _api.submitCeoDecision(
-        sessionId: 'session_governance_001',
+        sessionId: _sessionId,
         decisionChoice: decisionChoice,
         gitProvider: provider,
         customRepoName: repoName,
@@ -233,6 +347,10 @@ Repository: `$repoName`
                       children: [
                         // Git Target Bar
                         _buildGitTargetBar(),
+                        const SizedBox(height: 20),
+
+                        // Live Hackathon Board (Top 5 from Devpost)
+                        _buildHackathonBoard(),
                         const SizedBox(height: 20),
 
                         // CEO Proposal Gate
@@ -507,51 +625,85 @@ Repository: `$repoName`
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'CEO Proposal Gate',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFFD4E4FA),
-          ),
+        Row(
+          children: [
+            const Text(
+              'CEO Proposal Gate',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFD4E4FA),
+              ),
+            ),
+            const Spacer(),
+            if (_activeOpportunity['url'] != null)
+              InkWell(
+                onTap: () =>
+                    _launchExternalUrl(_activeOpportunity['url'].toString()),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF38BDF8).withAlpha(20),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                        color: const Color(0xFF38BDF8).withAlpha(60)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.emoji_events,
+                          size: 13, color: Color(0xFF8ED5FF)),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Source: ${(_activeOpportunity['title'] ?? 'Hackathon').toString()}',
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF8ED5FF)),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.open_in_new,
+                          size: 12, color: Color(0xFF8ED5FF)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
             // Concept A
             Expanded(
-              child: _buildConceptCard(
-                conceptTag: 'Concept A',
-                title: 'EphemeraFlow: Governed Multi-Agent Fleet',
-                description:
+              child: _buildProposalCard(
+                tag: 'Concept A',
+                idea: _ideaA,
+                fallbackTitle: 'EphemeraFlow: Governed Multi-Agent Fleet',
+                fallbackDescription:
                     'Hybrid polyglot architecture emphasizing rapid scale-out and tear-down capabilities with Dart Shelf workers on Cloud Run.',
-                chips: ['Google ADK 2.0', 'Dart Shelf', 'Cloud Run'],
-                targetImpact: '99.9% Uptime',
+                fallbackChips: ['Google ADK 2.0', 'Dart Shelf', 'Cloud Run'],
+                fallbackImpact: '99.9% Uptime',
                 impactColor: const Color(0xFF34D399),
                 gradientColors: [const Color(0xFF06B6D4), const Color(0xFF3B82F6)],
-                btnText: 'Approve Concept A',
-                onApprove: () => _approveConcept(
-                    'EphemeraFlow: Governed Multi-Agent Fleet',
-                    'ephemeraflow-governed-fleet'),
+                fallbackRepo: 'ephemeraflow-governed-fleet',
+                decisionChoice: 'approve_idea_a',
               ),
             ),
             const SizedBox(width: 16),
 
             // Concept B
             Expanded(
-              child: _buildConceptCard(
-                conceptTag: 'Concept B',
-                title: 'ArmorGuard: Row-Level Secure Multi-Tenant Hub',
-                description:
+              child: _buildProposalCard(
+                tag: 'Concept B',
+                idea: _ideaB,
+                fallbackTitle: 'ArmorGuard: Row-Level Secure Multi-Tenant Hub',
+                fallbackDescription:
                     'Privacy-first architecture ensuring strict data isolation across tenant boundaries with Vertex AI Model Armor.',
-                chips: ['Vertex AI Gemini', 'Cloud SQL RLS', 'Model Armor'],
-                targetImpact: 'Zero Cross-Tenant Leaks',
+                fallbackChips: ['Vertex AI Gemini', 'Cloud SQL RLS', 'Model Armor'],
+                fallbackImpact: 'Zero Cross-Tenant Leaks',
                 impactColor: const Color(0xFFC084FC),
                 gradientColors: [const Color(0xFF9333EA), const Color(0xFFD946EF)],
-                btnText: 'Approve Concept B',
-                onApprove: () => _approveConcept(
-                    'ArmorGuard: Row-Level Secure Multi-Tenant Hub',
-                    'armorguard-secure-agent-hub'),
+                fallbackRepo: 'armorguard-secure-agent-hub',
+                decisionChoice: 'approve_idea_b',
               ),
             ),
           ],
@@ -559,6 +711,52 @@ Repository: `$repoName`
       ],
     );
   }
+
+  /// Builds one CEO proposal card from a real Planner proposal when available,
+  /// falling back to the baseline concepts before the first discovery run.
+  Widget _buildProposalCard({
+    required String tag,
+    required Map<String, dynamic> idea,
+    required String fallbackTitle,
+    required String fallbackDescription,
+    required List<String> fallbackChips,
+    required String fallbackImpact,
+    required Color impactColor,
+    required List<Color> gradientColors,
+    required String fallbackRepo,
+    required String decisionChoice,
+  }) {
+    final dynamicTitle = (idea['title'] ?? '').toString();
+    final dynamicDescription = (idea['summary'] ?? '').toString();
+    final dynamicImpact = (idea['impact'] ?? '').toString();
+    final dynamicRepo = (idea['repo_name'] ?? '').toString();
+    final dynamicChips = _stringList(idea['tech_stack']);
+    final hackathonTitle = (idea['hackathon_title'] ?? '').toString();
+    final hackathonUrl = (idea['hackathon_url'] ?? '').toString();
+
+    return _buildConceptCard(
+      conceptTag: tag,
+      title: dynamicTitle.isNotEmpty ? dynamicTitle : fallbackTitle,
+      description: dynamicDescription.isNotEmpty
+          ? dynamicDescription
+          : fallbackDescription,
+      chips: dynamicChips.isNotEmpty ? dynamicChips : fallbackChips,
+      targetImpact: dynamicImpact.isNotEmpty ? dynamicImpact : fallbackImpact,
+      impactColor: impactColor,
+      gradientColors: gradientColors,
+      btnText: 'Approve $tag',
+      onApprove: () => _approveConcept(
+        dynamicTitle.isNotEmpty ? dynamicTitle : fallbackTitle,
+        dynamicRepo.isNotEmpty ? dynamicRepo : fallbackRepo,
+        decisionChoiceOverride: decisionChoice,
+      ),
+      hackathonTitle: hackathonTitle.isNotEmpty ? hackathonTitle : null,
+      hackathonUrl: hackathonUrl.isNotEmpty ? hackathonUrl : null,
+    );
+  }
+
+  List<String> _stringList(dynamic value) =>
+      (value as List? ?? const []).map((e) => e.toString()).toList();
 
   Widget _buildConceptCard({
     required String conceptTag,
@@ -570,6 +768,8 @@ Repository: `$repoName`
     required List<Color> gradientColors,
     required String btnText,
     required VoidCallback onApprove,
+    String? hackathonTitle,
+    String? hackathonUrl,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -653,6 +853,43 @@ Repository: `$repoName`
                             ))
                         .toList(),
                   ),
+                  if (hackathonUrl != null && hackathonUrl.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    InkWell(
+                      onTap: () => _launchExternalUrl(hackathonUrl),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withAlpha(20),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: const Color(0xFF38BDF8).withAlpha(60)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.emoji_events,
+                                size: 13, color: Color(0xFF8ED5FF)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                (hackathonTitle != null &&
+                                        hackathonTitle.isNotEmpty)
+                                    ? hackathonTitle
+                                    : 'Open hackathon page',
+                                style: const TextStyle(
+                                    fontSize: 11, color: Color(0xFF8ED5FF)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.open_in_new,
+                                size: 12, color: Color(0xFF8ED5FF)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Container(
                     height: 1,
@@ -1050,6 +1287,14 @@ Repository: `$repoName`
                 ),
               ),
               const Spacer(),
+              IconButton(
+                onPressed: _refreshTelemetry,
+                icon: const Icon(Icons.refresh, size: 16, color: Color(0xFFBDC8D1)),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Refresh live traces',
+              ),
+              const SizedBox(width: 6),
               Container(
                 width: 6,
                 height: 6,
@@ -1127,6 +1372,164 @@ Repository: `$repoName`
           ),
         ],
       ),
+    );
+  }
+
+  /// Live board of the top 5 discovered hackathons. Every row deep-links to
+  /// the competition page, opened in a new browser tab.
+  Widget _buildHackathonBoard() {
+    final items = _hackathons.take(5).toList();
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withAlpha(150),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF38BDF8).withAlpha(25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              children: [
+                const Icon(Icons.emoji_events, size: 16, color: Color(0xFFFBBF24)),
+                const SizedBox(width: 8),
+                const Text(
+                  'LIVE HACKATHON BOARD — TOP 5',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFC4E7FF),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF10B981),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  items.isEmpty ? 'AWAITING DISCOVERY' : 'LIVE · DEVPOST',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: items.isEmpty
+                        ? const Color(0xFF87929A)
+                        : const Color(0xFF10B981),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (items.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Text(
+                'Trigger a discovery cycle to scout active competitions from Devpost in real time.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF87929A)),
+              ),
+            )
+          else
+            ...items.asMap().entries.map((entry) {
+              final rank = entry.key + 1;
+              final hackathon = entry.value;
+              final url = (hackathon['url'] ?? '').toString();
+              final title = (hackathon['title'] ?? 'Untitled hackathon').toString();
+              final prize = hackathon['prize_pool'];
+              final deadline = (hackathon['submission_deadline'] ?? 'TBA').toString();
+              return InkWell(
+                onTap: url.isEmpty ? null : () => _launchExternalUrl(url),
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    border:
+                        Border(top: BorderSide(color: Colors.white.withAlpha(10))),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withAlpha(25),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '$rank',
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF8ED5FF),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFD4E4FA),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _boardStat(
+                        'PRIZE',
+                        prize is num ? '\$${prize.toInt()}' : '$prize',
+                      ),
+                      const SizedBox(width: 20),
+                      _boardStat('DEADLINE', deadline),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.open_in_new,
+                          size: 14, color: Color(0xFF38BDF8)),
+                    ],
+                  ),
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+
+  Widget _boardStat(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 8,
+            color: Color(0xFF87929A),
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFFBDC8D1),
+          ),
+        ),
+      ],
     );
   }
 }

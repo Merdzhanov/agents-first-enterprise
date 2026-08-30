@@ -63,5 +63,67 @@ steps:
       - '--min-instances'
       - '0'
 
+  # ==========================================
+  # SERVICE 3: FRONTEND (Flutter Web)
+  # ==========================================
+  # 7. Build Flutter Web (Compiles Dart to JS/Wasm)
+  # 7. Build Flutter Web (Standard WebAssembly / HTML fallback)
+  - name: 'ghcr.io/cirruslabs/flutter:stable'
+    dir: 'frontend/governance_dashboard'
+    entrypoint: 'flutter'
+    args: 
+      - 'build'
+      - 'web'
+      - '--wasm'
+      - '--dart-define=ORCHESTRATOR_URL=https://orchestrator-service-952582772348.europe-west1.run.app'
+
+  # 8. Build the Frontend Docker image (Nginx wrapper)
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: 'frontend/governance_dashboard'
+    args: 
+      - 'build'
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/governance-dashboard:$BUILD_ID'
+      - '.'
+
+  # 9. Push Frontend image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/governance-dashboard:$BUILD_ID'
+
+  # 10. Deploy Frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'governance-dashboard-demo'
+      - '--image'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/governance-dashboard:$BUILD_ID'
+      - '--region'
+      - 'europe-west1'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+      - '--min-instances'
+      - '0'
+
+  # ==========================================
+  # FINAL STEP: Print Deployment URLs
+  # ==========================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "======================================================"
+        echo "🚀 DEPLOYMENT SUCCESSFUL! HERE ARE YOUR LIVE LINKS:"
+        echo "======================================================"
+        echo "Backend (Orchestrator): $(gcloud run services describe orchestrator-service --region europe-west1 --format='value(status.url)')"
+        echo "Dart Node (Worker): $(gcloud run services describe dart-node-service --region europe-west1 --format='value(status.url)')"
+        echo "Frontend (Dashboard): $(gcloud run services describe governance-dashboard-demo --region europe-west1 --format='value(status.url)')"
+        echo "======================================================"
+
 options:
   logging: CLOUD_LOGGING_ONLY

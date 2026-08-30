@@ -87,9 +87,13 @@ def trigger_discovery(req: TriggerDiscoveryRequest) -> Dict[str, Any]:
 
     if scout_result.status != "success":
         return {
+            "session_id": req.session_id,
             "status": scout_result.status,
             "message": scout_result.message,
+            "request_input": None,
             "data": scout_result.data,
+            "hackathons": [],
+            "opportunity": scout_result.data,
         }
 
     SESSION_DB.append_trace(
@@ -109,12 +113,27 @@ def trigger_discovery(req: TriggerDiscoveryRequest) -> Dict[str, Any]:
         state=context.state,
     )
 
+    # Attach the source hackathon (title + URL) to each proposal so the
+    # dashboard can deep-link every suggested project to its competition.
+    opportunity = context.state.get("active_opportunity", {})
+    data = dict(planner_result.data)
+    for idea_key in ("idea_a", "idea_b"):
+        idea = data.get(idea_key)
+        if isinstance(idea, dict):
+            idea["hackathon_title"] = opportunity.get("title")
+            idea["hackathon_url"] = opportunity.get("url")
+
+    # Top 5 discovered hackathons for the dashboard's live hackathon board.
+    hackathons = context.state.get("discovered_hackathons", [])
+
     return {
         "session_id": req.session_id,
         "status": planner_result.status,
         "message": planner_result.message,
         "request_input": planner_result.request_input.to_dict() if planner_result.request_input else None,
-        "data": planner_result.data,
+        "data": data,
+        "hackathons": hackathons,
+        "opportunity": opportunity,
     }
 
 @app.post("/fleet/scheduled-discovery")

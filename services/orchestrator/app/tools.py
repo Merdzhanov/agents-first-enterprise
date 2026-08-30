@@ -132,6 +132,8 @@ def execute_dart_task(
                     {
                         "id": "hack_gemini_enterprise",
                         "title": "Google Cloud & Gemini Multi-Agent Challenge",
+                        "url": "https://googlecloudagents.devpost.com",
+                        "submission_deadline": "2026-09-30",
                         "deadline": "2026-09-30",
                         "prize_pool": 75000,
                         "eligible_gcp_apis": ["Vertex AI", "Cloud Run", "Firestore", "Pub/Sub"],

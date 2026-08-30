@@ -1,13 +1,18 @@
-# Using a lightweight and fast Nginx server
-FROM nginx:alpine
+# Stage 1: Build Flutter Web directly inside Docker
+FROM ghcr.io/cirruslabs/flutter:stable AS build
 
-# Copy our Nginx configuration
+ARG ORCHESTRATOR_URL=https://orchestrator-service-952582772348.europe-west1.run.app
+
+WORKDIR /app
+COPY . .
+
+RUN flutter pub get
+RUN flutter build web --wasm --dart-define=ORCHESTRATOR_URL=${ORCHESTRATOR_URL}
+
+# Stage 2: Serve with Nginx
+FROM nginx:alpine
+COPY --from=build /app/build/web /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy the already built Flutter Web files from the new folder
-COPY build/web /usr/share/nginx/html
-
-# Expose port 8080 (requirement of Cloud Run)
 EXPOSE 8080
-
 CMD ["nginx", "-g", "daemon off;"]

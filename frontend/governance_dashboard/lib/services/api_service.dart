@@ -111,6 +111,20 @@ class ApiService {
     }
     return decoded.cast<Map<String, dynamic>>();
   }
+
+  /// Fetches the current session record (status + pipeline state) so the UI can
+  /// reflect in real time what the background fleet is doing right now.
+  Future<Map<String, dynamic>> getSessionState(String sessionId) async {
+    final decoded = await _send(
+      () => _client
+          .get(Uri.parse('$baseUrl/fleet/session/$sessionId'))
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from session endpoint');
+    }
+    return decoded;
+  }
 }
 
 

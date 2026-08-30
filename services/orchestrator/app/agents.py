@@ -54,6 +54,9 @@ class ScoutAgent:
 
         top_opportunity = matches[0]
         context.state["active_opportunity"] = top_opportunity
+        # Keep the full ranked shortlist (top 5) so the dashboard can render a
+        # live hackathon board with a direct link for every discovered competition.
+        context.state["discovered_hackathons"] = matches[:5]
 
         return AgentResult(
             agent_name=self.name,
