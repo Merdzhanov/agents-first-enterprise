@@ -57,8 +57,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = false;
   String _selectedFile = 'README.md';
 
-  // Live telemetry + discovery state (sourced from the real orchestrator).
-  static const String _sessionId = 'session_governance_001';
+  // Active session for telemetry polling. Starts as the default governance
+  // session but can be reassigned when the CEO submits an independent idea.
+  String _sessionId = 'session_governance_001';
   Timer? _telemetryTimer;
   List<Map<String, dynamic>> _hackathons = [];
   Map<String, dynamic> _activeOpportunity = {};
@@ -76,6 +77,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       TextEditingController();
   final TextEditingController _memoryContentController =
       TextEditingController();
+  final TextEditingController _newIdeaController =
+      TextEditingController();
+  bool _isSubmittingIdea = false;
+  bool _isRunningScheduledDiscovery = false;
 
   List<Map<String, dynamic>> _logs = [
     {
@@ -126,6 +131,7 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
     _customDirectiveController.dispose();
     _memoryTopicController.dispose();
     _memoryContentController.dispose();
+    _newIdeaController.dispose();
     super.dispose();
   }
 
@@ -343,6 +349,129 @@ Repository: `$repoName`
     final directive = _customDirectiveController.text.trim();
     if (directive.isEmpty) return;
     _approveConcept('Custom Directive: $directive', 'custom-enterprise-prototype');
+  }
+
+  void _showNewIdeaDialog() {
+    _newIdeaController.clear();
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1E293B),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: const Row(
+            children: [
+              Icon(Icons.lightbulb_outline,
+                  color: Color(0xFFFBBF24), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'New CEO Idea',
+                style: TextStyle(
+                  color: Color(0xFFD4E4FA),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          content: TextField(
+            controller: _newIdeaController,
+            maxLines: 4,
+            autofocus: true,
+            style: const TextStyle(color: Color(0xFFD4E4FA), fontSize: 13),
+            decoration: InputDecoration(
+              hintText:
+                  'Describe your prototype idea — problem, target users, key GCP services...',
+              hintStyle:
+                  const TextStyle(fontSize: 13, color: Color(0xFF87929A)),
+              filled: true,
+              fillColor: const Color(0xFF020617),
+              border: OutlineInputBorder(
+                borderSide: BorderSide(color: const Color(0xFF3E484F)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: const Color(0xFFFBBF24)),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel',
+                  style: TextStyle(color: Color(0xFFBDC8D1))),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final text = _newIdeaController.text.trim();
+                if (text.isEmpty) return;
+                Navigator.of(ctx).pop();
+                _submitNewIdea(text);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFBBF24),
+              ),
+              child: const Text('Submit Idea',
+                  style: TextStyle(
+                      color: Color(0xFF00354A),
+                      fontWeight: FontWeight.w700)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _submitNewIdea(String ideaText) async {
+    setState(() => _isSubmittingIdea = true);
+    _addLog('CEO: Submitting independent idea — "${ideaText.substring(0, ideaText.length.clamp(0, 60))}..."',
+        'ceo');
+    try {
+      final result = await _api.submitCeoIdea(
+        customPrompt: ideaText,
+        gitProvider: _selectedProvider.toLowerCase(),
+      );
+      if (!mounted) return;
+      final newSession = result['session_id'] as String?;
+      setState(() {
+        _isSubmittingIdea = false;
+        if (newSession != null && newSession.isNotEmpty) {
+          _sessionId = newSession;
+        }
+        _statusText = 'CEO idea accepted — fleet pipeline running in background.';
+      });
+      _addLog(
+          'Planner: Custom directive accepted. Session ${newSession ?? "?"} provisioning in background.',
+          'agent');
+      _startTelemetryPolling();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmittingIdea = false;
+        _statusText = 'Failed to submit idea — $e';
+      });
+      _addLog('Error submitting idea: $e', 'error');
+    }
+  }
+
+  void _runScheduledDiscovery() async {
+    setState(() => _isRunningScheduledDiscovery = true);
+    _addLog('Scheduler: On-demand discovery cycle triggered.', 'system');
+    try {
+      final result = await _api.triggerScheduledDiscovery();
+      if (!mounted) return;
+      final count = result['proposals_count'] as int? ?? 0;
+      setState(() => _isRunningScheduledDiscovery = false);
+      _addLog(
+          'Scheduler: Cycle complete — $count new proposal(s) synthesized for CEO review.',
+          'success');
+      // Refresh sessions list so any new auto-sessions appear.
+      _onTelemetryTick();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isRunningScheduledDiscovery = false);
+      _addLog('Scheduler error: $e', 'error');
+    }
   }
 
   @override
@@ -582,6 +711,39 @@ Repository: `$repoName`
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4)),
                   elevation: 0,
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: _isSubmittingIdea ? null : _showNewIdeaDialog,
+                icon: Icon(
+                  Icons.lightbulb_outline,
+                  size: 18,
+                  color: _isSubmittingIdea
+                      ? const Color(0xFF3E484F)
+                      : const Color(0xFFFBBF24),
+                ),
+                label: Text(
+                  _isSubmittingIdea ? 'SUBMITTING...' : '＋ NEW IDEA',
+                  style: TextStyle(
+                    color: _isSubmittingIdea
+                        ? const Color(0xFF3E484F)
+                        : const Color(0xFFFBBF24),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  side: BorderSide(
+                    color: _isSubmittingIdea
+                        ? const Color(0xFF3E484F)
+                        : const Color(0xFFFBBF24).withAlpha(180),
+                  ),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1916,8 +2078,12 @@ Repository: `$repoName`
                   (_systemData['session_store'] ?? '—').toString()),
               _govKV('Memory Store',
                   (_systemData['memory_store'] ?? '—').toString()),
-              _govKV('Scheduler Interval',
-                  '${_systemData['scheduler_interval_minutes'] ?? '—'} min'),
+              _govKV('Scheduler Interval', () {
+                final mins = _systemData['scheduler_interval_minutes'];
+                if (mins == 1440) return '24h (daily)';
+                if (mins is num) return '$mins min';
+                return '—';
+              }()),
               _govKV('Dart Node URL',
                   (_systemData['dart_node_url'] ?? '—').toString()),
               _govKV('Vertex AI Mode',
@@ -1930,6 +2096,44 @@ Repository: `$repoName`
                 items: agents,
                 borderColor: const Color(0xFF38BDF8).withAlpha(70),
                 textColor: const Color(0xFF7BD0FF),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isRunningScheduledDiscovery
+                      ? null
+                      : _runScheduledDiscovery,
+                  icon: Icon(
+                    Icons.update,
+                    size: 16,
+                    color: _isRunningScheduledDiscovery
+                        ? const Color(0xFF3E484F)
+                        : const Color(0xFF00354A),
+                  ),
+                  label: Text(
+                    _isRunningScheduledDiscovery
+                        ? 'SCANNING...'
+                        : 'RUN DISCOVERY CYCLE NOW',
+                    style: TextStyle(
+                      color: _isRunningScheduledDiscovery
+                          ? const Color(0xFF3E484F)
+                          : const Color(0xFF00354A),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isRunningScheduledDiscovery
+                        ? const Color(0xFF3E484F)
+                        : const Color(0xFF38BDF8),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4)),
+                    elevation: 0,
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               _govKV('HITL Gates',

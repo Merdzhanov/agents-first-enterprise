@@ -20,10 +20,11 @@ class DiscoveryScheduler:
 
     def __init__(
         self,
-        interval_minutes: int = 30,
+        interval_minutes: int = 1440,
         session_db: Optional[CloudSessionManager] = None,
         llm: Optional[VertexGeminiClient] = None,
     ):
+        # Default: once daily (1440 min). Override via DISCOVERY_INTERVAL_MINUTES.
         self.interval_minutes = int(os.getenv("DISCOVERY_INTERVAL_MINUTES", str(interval_minutes)))
         self.session_db = session_db or CloudSessionManager()
         self.llm = llm or VertexGeminiClient()

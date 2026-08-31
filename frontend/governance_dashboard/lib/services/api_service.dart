@@ -205,6 +205,47 @@ class ApiService {
     }
     return decoded;
   }
+
+  /// CEO submits a fully independent idea at any time — no prior discovery required.
+  /// The backend seeds a fresh session and starts the fleet pipeline in the background.
+  Future<Map<String, dynamic>> submitCeoIdea({
+    required String customPrompt,
+    String gitProvider = 'github',
+    String? customRepoName,
+    String? sessionId,
+  }) async {
+    final decoded = await _send(
+      () => _client
+          .post(
+            Uri.parse('$baseUrl/fleet/ceo-idea'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'custom_prompt': customPrompt,
+              'git_provider': gitProvider,
+              'custom_repo_name': customRepoName,
+              'session_id': sessionId,
+            }),
+          )
+          .timeout(const Duration(seconds: 30)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/ceo-idea');
+    }
+    return decoded;
+  }
+
+  /// On-demand trigger of the daily discovery cycle (same logic as the Cloud Scheduler job).
+  Future<Map<String, dynamic>> triggerScheduledDiscovery() async {
+    final decoded = await _send(
+      () => _client
+          .post(Uri.parse('$baseUrl/fleet/scheduled-discovery'))
+          .timeout(const Duration(seconds: 60)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/scheduled-discovery');
+    }
+    return decoded;
+  }
 }
 
 

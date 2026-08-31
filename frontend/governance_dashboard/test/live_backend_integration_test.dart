@@ -119,6 +119,58 @@ void main() {
         (board.first as Map)['url'],
       );
     });
+
+    test('submitCeoIdea POSTs to /fleet/ceo-idea and returns new session',
+        () async {
+      final mockBody = jsonEncode({
+        'session_id': 'session_ceo_custom_1700000000',
+        'status': 'processing_in_background',
+        'message': 'CEO idea accepted.',
+        'execution_mode': 'manual',
+      });
+
+      final api = ApiService(
+        baseUrl: 'http://mock.local',
+        client: MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(request.url.path, '/fleet/ceo-idea');
+          final body = jsonDecode(request.body);
+          expect(body['custom_prompt'], 'My independent idea');
+          expect(body['git_provider'], 'gitlab');
+          return http.Response(mockBody, 200);
+        }),
+      );
+
+      final result = await api.submitCeoIdea(
+        customPrompt: 'My independent idea',
+        gitProvider: 'gitlab',
+      );
+      expect(result['session_id'], 'session_ceo_custom_1700000000');
+      expect(result['status'], 'processing_in_background');
+      expect(result['execution_mode'], 'manual');
+    });
+
+    test('triggerScheduledDiscovery POSTs to /fleet/scheduled-discovery',
+        () async {
+      final mockBody = jsonEncode({
+        'status': 'success',
+        'proposals_count': 3,
+        'proposals': [],
+      });
+
+      final api = ApiService(
+        baseUrl: 'http://mock.local',
+        client: MockClient((request) async {
+          expect(request.method, 'POST');
+          expect(request.url.path, '/fleet/scheduled-discovery');
+          return http.Response(mockBody, 200);
+        }),
+      );
+
+      final result = await api.triggerScheduledDiscovery();
+      expect(result['proposals_count'], 3);
+      expect(result['status'], 'success');
+    });
   });
 
   group('ApiService against DEAD backend (errors must surface, not mask)', () {

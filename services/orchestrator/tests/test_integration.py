@@ -356,6 +356,51 @@ def test_invalid_decision_choice_rejected(client: TestClient) -> None:
     assert res.status_code == 422
 
 
+def test_ceo_idea_independent_session(
+    client: TestClient, mock_dart: None, llm_calls: Dict[str, int]
+) -> None:
+    """CEO submits an independent idea — no prior discovery required."""
+    res = client.post(
+        "/fleet/ceo-idea",
+        json={"custom_prompt": "An AI-powered carbon footprint tracker for GCP projects"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "processing_in_background"
+    assert body["execution_mode"] == "manual"
+    assert body["session_id"].startswith("session_ceo_custom_")
+    sid = body["session_id"]
+
+    # Background pipeline ran: architecture + submission + >=1 source file.
+    sess = client.get(f"/fleet/session/{sid}").json()
+    assert sess["status"] == "completed"
+    assert llm_calls["architecture"] >= 1
+    assert llm_calls["submission"] >= 1
+    assert llm_calls["source_file"] >= 1
+
+    # Traces show the CEO idea origin + pipeline progression.
+    traces = client.get(f"/fleet/session/{sid}/traces").json()
+    agents = [t["agent_name"] for t in traces]
+    assert "CEO" in agents
+    assert "MarketingAgent" in agents
+
+    # Artifacts expose the generated deliverables.
+    arts = client.get(f"/fleet/session/{sid}/artifacts").json()
+    assert arts["submission_package"] is not None
+    assert len(arts["committed_files"]) >= 1
+
+
+def test_ceo_idea_rejects_empty_prompt(client: TestClient) -> None:
+    res = client.post("/fleet/ceo-idea", json={"custom_prompt": ""})
+    assert res.status_code == 422
+
+
+def test_ceo_idea_conflict_on_duplicate_session(client: TestClient) -> None:
+    payload = {"custom_prompt": "Duplicate session test", "session_id": "dup_ceo_session"}
+    assert client.post("/fleet/ceo-idea", json=payload).status_code == 200
+    assert client.post("/fleet/ceo-idea", json=payload).status_code == 409
+
+
 # ---------------------------------------------------------------------
 # 7. Governance surfaces: sessions registry, memory bank, security, system
 # ---------------------------------------------------------------------

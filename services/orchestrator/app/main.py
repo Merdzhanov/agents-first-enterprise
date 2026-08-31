@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from typing import Any, Dict, List, Literal, Optional
 
 # Strict CEO decision contract — invalid values are rejected by pydantic (HTTP 422).
@@ -73,6 +74,14 @@ class CeoDecisionRequest(BaseModel):
 class DeployConfirmRequest(BaseModel):
     session_id: str
     decision: str = Field(default="confirm_deploy_cloud_run", description="confirm_deploy_cloud_run | cancel_deployment")
+
+
+class CeoIdeaRequest(BaseModel):
+    """CEO submits a fully independent idea at any time — no prior discovery required."""
+    custom_prompt: str = Field(..., min_length=1, description="The CEO's custom prototype directive / idea description")
+    git_provider: str = Field(default="github", description="github | gitlab")
+    custom_repo_name: Optional[str] = Field(default=None, description="Optional repository name slug")
+    session_id: Optional[str] = Field(default=None, description="Optional explicit session id; generated if omitted")
 
 
 class MemoryStoreRequest(BaseModel):
@@ -274,6 +283,63 @@ def submit_ceo_decision(req: CeoDecisionRequest, background_tasks: BackgroundTas
         "status": "processing_in_background",
         "message": "Manual fleet has started processing.",
         "execution_mode": "manual"
+    }
+
+
+@app.post("/fleet/ceo-idea")
+def submit_ceo_idea(req: CeoIdeaRequest, background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    """
+    CEO submits a fully independent idea at any time — no prior discovery required.
+
+    Reuses the same custom_idea pipeline as the CEO decision gate, but seeds a
+    fresh session from scratch so the CEO can propose ideas on demand, without
+    waiting for a scheduled or triggered discovery cycle.
+    """
+    session_id = req.session_id or f"session_ceo_custom_{int(time.time())}"
+
+    if SESSION_DB.session_exists(session_id):
+        raise HTTPException(status_code=409, detail=f"Session '{session_id}' already exists")
+
+    context = ToolContext(session_id=session_id)
+    # Seed a minimal opportunity so downstream agents have a title context.
+    context.state["active_opportunity"] = {
+        "title": "CEO Independent Idea",
+        "url": None,
+        "source": "ceo_direct_input",
+    }
+
+    SESSION_DB.append_trace(session_id, "CEO", "ceo", f"CEO independent idea submitted: {req.custom_prompt[:80]}")
+
+    planner = PlannerAgent(llm=LLM_CLIENT)
+    decision_result = planner.process_ceo_decision(
+        decision_choice="custom_idea",
+        custom_prompt=req.custom_prompt,
+        git_provider=req.git_provider,
+        custom_repo_name=req.custom_repo_name,
+        context=context,
+    )
+
+    if decision_result.status == "skipped":
+        SESSION_DB.save_session(session_id, "skipped", "PlannerAgent", context.state)
+        return {"session_id": session_id, "status": "skipped", "message": "Idea skipped."}
+
+    # execute_ceo_pipeline_background_manual expects a CeoDecisionRequest —
+    # build one from the CeoIdeaRequest fields (only session_id is consumed).
+    pipeline_req = CeoDecisionRequest(
+        session_id=session_id,
+        decision_choice="custom_idea",
+        custom_prompt=req.custom_prompt,
+        git_provider=req.git_provider,
+        custom_repo_name=req.custom_repo_name,
+    )
+    background_tasks.add_task(execute_ceo_pipeline_background_manual, pipeline_req, context)
+    SESSION_DB.save_session(session_id, "processing_in_background", "ArchitectAgent", context.state)
+
+    return {
+        "session_id": session_id,
+        "status": "processing_in_background",
+        "message": "CEO idea accepted — fleet pipeline started in background.",
+        "execution_mode": "manual",
     }
 
 
