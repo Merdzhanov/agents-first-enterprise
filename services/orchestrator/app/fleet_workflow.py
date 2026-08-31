@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional
 
 from google.adk import Runner
 from google.adk.events.request_input import RequestInput as AdkRequestInput
+from google.adk.errors.already_exists_error import AlreadyExistsError
 # Canonical HITL detection helpers in ADK 2.6.2 (not re-exported publicly).
 from google.adk.workflow.utils._workflow_hitl_utils import (
     get_request_input_interrupt_ids,
@@ -257,9 +258,19 @@ _FLEET_USER = "ceo"
 
 async def start_fleet_run(session_id: str, raw_feed: Dict[str, Any]) -> tuple:
     """Runs phase 1 of the workflow. Returns (state, pending_request_input|None)."""
-    await FLEET_SESSION_SERVICE.create_session(
-        app_name=FLEET_RUNNER.app_name, user_id=_FLEET_USER, session_id=session_id,
-    )
+    try:
+        await FLEET_SESSION_SERVICE.create_session(
+            app_name=FLEET_RUNNER.app_name, user_id=_FLEET_USER, session_id=session_id,
+        )
+    except AlreadyExistsError:
+        # Idempotent: a session for this id already exists (e.g. retry or
+        # repeated live test) — delete it and start fresh.
+        await FLEET_SESSION_SERVICE.delete_session(
+            app_name=FLEET_RUNNER.app_name, user_id=_FLEET_USER, session_id=session_id,
+        )
+        await FLEET_SESSION_SERVICE.create_session(
+            app_name=FLEET_RUNNER.app_name, user_id=_FLEET_USER, session_id=session_id,
+        )
     pending_event = None
     interrupt_ids: list = []
     async for event in FLEET_RUNNER.run_async(

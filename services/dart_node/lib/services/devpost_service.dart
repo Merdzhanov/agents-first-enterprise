@@ -80,7 +80,7 @@ class DevpostService {
         {
           'id': 'hack_google_cloud_agent_challenge',
           'title': 'Google Cloud & Vertex AI Agent Challenge',
-          'url': 'https://googlecloudagents.devpost.com',
+          'url': 'https://devpost.com/hackathons',
           'submission_deadline': '2026-09-30',
           'prize_pool': 100000,
           'eligible_gcp_apis': ['Vertex AI', 'Cloud Run', 'Firestore', 'Pub/Sub'],
@@ -89,7 +89,7 @@ class DevpostService {
         {
           'id': 'hack_gemini_enterprise_sprint',
           'title': 'Gemini 3.5 Enterprise Multi-Agent Sprint',
-          'url': 'https://geminienterprise.devpost.com',
+          'url': 'https://devpost.com/hackathons',
           'submission_deadline': '2026-10-15',
           'prize_pool': 75000,
           'eligible_gcp_apis': ['Vertex AI', 'Cloud Run', 'Cloud SQL RLS'],

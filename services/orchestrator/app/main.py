@@ -120,16 +120,25 @@ def trigger_discovery(req: TriggerDiscoveryRequest) -> Dict[str, Any]:
             SESSION_DB.save_session(
                 req.session_id, "awaiting_ceo_decision", "PlannerAgent", state
             )
+            # Attach the source hackathon deep-link to each proposal so the
+            # dashboard can open the specific competition in a new tab.
+            opportunity = state.get("active_opportunity", {})
+            data = {
+                "idea_a": state.get("idea_a"),
+                "idea_b": state.get("idea_b"),
+            }
+            for idea_key in ("idea_a", "idea_b"):
+                idea = data.get(idea_key)
+                if isinstance(idea, dict):
+                    idea["hackathon_title"] = opportunity.get("title")
+                    idea["hackathon_url"] = opportunity.get("url")
             return {
                 "session_id": req.session_id,
                 "status": "awaiting_ceo_decision",
                 "request_input": pending,
                 "hackathons": state.get("discovered_hackathons", []),
-                "opportunity": state.get("active_opportunity", {}),
-                "data": {
-                    "idea_a": state.get("idea_a"),
-                    "idea_b": state.get("idea_b"),
-                },
+                "opportunity": opportunity,
+                "data": data,
                 "execution_mode": "adk_runner",
             }
         return {
