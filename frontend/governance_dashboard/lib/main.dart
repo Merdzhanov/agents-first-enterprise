@@ -380,18 +380,18 @@ Repository: `$repoName`
             maxLines: 4,
             autofocus: true,
             style: const TextStyle(color: Color(0xFFD4E4FA), fontSize: 13),
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText:
                   'Describe your prototype idea — problem, target users, key GCP services...',
               hintStyle:
-                  const TextStyle(fontSize: 13, color: Color(0xFF87929A)),
+                  TextStyle(fontSize: 13, color: Color(0xFF87929A)),
               filled: true,
-              fillColor: const Color(0xFF020617),
+              fillColor: Color(0xFF020617),
               border: OutlineInputBorder(
-                borderSide: BorderSide(color: const Color(0xFF3E484F)),
+                borderSide: BorderSide(color: Color(0xFF3E484F)),
               ),
               focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: const Color(0xFFFBBF24)),
+                borderSide: BorderSide(color: Color(0xFFFBBF24)),
               ),
             ),
           ),
