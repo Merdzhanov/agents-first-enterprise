@@ -75,8 +75,33 @@ class CloudSessionManager:
         self._local_traces[session_id].append(entry)
 
     def get_traces(self, session_id: str) -> List[Dict[str, Any]]:
-        """Retrieves all chronological traces for a session."""
+        """Retrieves all chronological traces for the session."""
         return self._local_traces.get(session_id, [])
+
+    def list_sessions(self, limit: int = 100, include_state: bool = False) -> List[Dict[str, Any]]:
+        """Returns session summaries (newest first) for the governance dashboard.
+
+        With ``include_state=True`` each record also carries the full session
+        state (used by dashboard drill-down views).
+        """
+        summaries: List[Dict[str, Any]] = []
+        for s in self._local_sessions.values():
+            state = s.get("state", {}) or {}
+            selected = state.get("selected_idea") or {}
+            idea_a = state.get("idea_a") or {}
+            record = {
+                "session_id": s["session_id"],
+                "status": s.get("status"),
+                "current_agent": s.get("current_agent"),
+                "tenant_id": s.get("tenant_id"),
+                "updated_at": s.get("updated_at"),
+                "idea_title": selected.get("title") or idea_a.get("title"),
+            }
+            if include_state:
+                record["state"] = state
+            summaries.append(record)
+        summaries.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+        return summaries[:limit]
 
 
 class VectorMemoryManager:
@@ -143,6 +168,15 @@ class VectorMemoryManager:
         # Sort by highest score (closest vector simulation) and slice top_k
         scored_results.sort(key=lambda x: x[0], reverse=True)
         return [res[1] for res in scored_results[:top_k]]
+
+    def list_memories(self, tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Returns stored memories (newest first), optionally filtered by tenant."""
+        memories = [
+            dict(m) for m in self._local_memories
+            if tenant_id is None or m["tenant_id"] == tenant_id
+        ]
+        memories.sort(key=lambda m: m.get("created_at", ""), reverse=True)
+        return memories
 
 
 # =====================================================================

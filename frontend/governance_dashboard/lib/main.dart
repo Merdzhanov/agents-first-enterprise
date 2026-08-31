@@ -65,6 +65,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic> _ideaA = {};
   Map<String, dynamic> _ideaB = {};
 
+  // Enterprise governance sections (sessions / memory / security / system).
+  String _activeSection = 'fleet';
+  bool _sectionLoading = false;
+  Map<String, dynamic> _sessionsData = {};
+  Map<String, dynamic> _memoryData = {};
+  Map<String, dynamic> _securityData = {};
+  Map<String, dynamic> _systemData = {};
+  final TextEditingController _memoryTopicController =
+      TextEditingController();
+  final TextEditingController _memoryContentController =
+      TextEditingController();
+
   List<Map<String, dynamic>> _logs = [
     {
       'time': 'System Ready',
@@ -112,6 +124,8 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
     _telemetryTimer?.cancel();
     _nameController.dispose();
     _customDirectiveController.dispose();
+    _memoryTopicController.dispose();
+    _memoryContentController.dispose();
     super.dispose();
   }
 
@@ -120,7 +134,16 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
   void _startTelemetryPolling() {
     _refreshTelemetry();
     _telemetryTimer =
-        Timer.periodic(const Duration(seconds: 3), (_) => _refreshTelemetry());
+        Timer.periodic(const Duration(seconds: 3), (_) => _onTelemetryTick());
+  }
+
+  /// One polling tick: fleet traces/status always refresh; the session
+  /// registry stays live while its section is on screen.
+  void _onTelemetryTick() {
+    _refreshTelemetry();
+    if (_activeSection == 'sessions') {
+      _loadSessions(silent: true);
+    }
   }
 
   Future<void> _refreshTelemetry() async {
@@ -331,41 +354,18 @@ Repository: `$repoName`
           // Top Navigation Bar
           _buildTopNavBar(),
 
-          // Main Layout Area (68% Main + 32% Logs)
+          // Main Layout Area (Rail + 62% Section + 30% Logs)
           Expanded(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Main Content (68%)
+                // Left governance rail: Fleet / Sessions / Memory / Security / System
+                _buildSectionRail(),
+
+                // Active section content
                 Expanded(
-                  flex: 68,
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Git Target Bar
-                        _buildGitTargetBar(),
-                        const SizedBox(height: 20),
-
-                        // Live Hackathon Board (Top 5 from Devpost)
-                        _buildHackathonBoard(),
-                        const SizedBox(height: 20),
-
-                        // CEO Proposal Gate
-                        _buildCeoProposalGate(),
-                        const SizedBox(height: 20),
-
-                        // Custom Directive & Skip Row
-                        _buildCustomAndSkipRow(),
-                        const SizedBox(height: 20),
-
-                        // Repository Status & Artifacts Hub
-                        _buildRepositoryStatusHub(),
-                      ],
-                    ),
-                  ),
+                  flex: 62,
+                  child: _buildActiveSection(),
                 ),
 
                 // Vertical Divider
@@ -379,6 +379,134 @@ Repository: `$repoName`
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Fleet section — the original main content column.
+  Widget _buildFleetSection() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Git Target Bar
+          _buildGitTargetBar(),
+          const SizedBox(height: 20),
+
+          // Live Hackathon Board (Top 5 from Devpost)
+          _buildHackathonBoard(),
+          const SizedBox(height: 20),
+
+          // CEO Proposal Gate
+          _buildCeoProposalGate(),
+          const SizedBox(height: 20),
+
+          // Custom Directive & Skip Row
+          _buildCustomAndSkipRow(),
+          const SizedBox(height: 20),
+
+          // Repository Status & Artifacts Hub
+          _buildRepositoryStatusHub(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveSection() {
+    switch (_activeSection) {
+      case 'sessions':
+        return _buildSessionsPanel();
+      case 'memory':
+        return _buildMemoryPanel();
+      case 'security':
+        return _buildSecurityPanel();
+      case 'system':
+        return _buildSystemPanel();
+      default:
+        return _buildFleetSection();
+    }
+  }
+
+  void _switchSection(String section) {
+    setState(() => _activeSection = section);
+    switch (section) {
+      case 'sessions':
+        _loadSessions();
+      case 'memory':
+        _loadMemory();
+      case 'security':
+        _loadSecurity();
+      case 'system':
+        _loadSystem();
+    }
+  }
+
+  static const List<(String, IconData, String)> _govSections = [
+    ('fleet', Icons.hub, 'FLEET'),
+    ('sessions', Icons.history, 'SESSIONS'),
+    ('memory', Icons.psychology, 'MEMORY'),
+    ('security', Icons.shield_outlined, 'SECURITY'),
+    ('system', Icons.dns, 'SYSTEM'),
+  ];
+
+  Widget _buildSectionRail() {
+    return Container(
+      width: 84,
+      decoration: BoxDecoration(
+        color: const Color(0xFF051424),
+        border: Border(right: BorderSide(color: Colors.white.withAlpha(15))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 14),
+          for (final s in _govSections)
+            InkWell(
+              onTap: () => _switchSection(s.$1),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _activeSection == s.$1
+                      ? const Color(0xFF38BDF8).withAlpha(30)
+                      : Colors.transparent,
+                  border: Border(
+                    left: BorderSide(
+                      width: 3,
+                      color: _activeSection == s.$1
+                          ? const Color(0xFF38BDF8)
+                          : Colors.transparent,
+                    ),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      s.$2,
+                      size: 20,
+                      color: _activeSection == s.$1
+                          ? const Color(0xFF8ED5FF)
+                          : const Color(0xFFBDC8D1),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      s.$3,
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 0.5,
+                        fontWeight: _activeSection == s.$1
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: _activeSection == s.$1
+                            ? const Color(0xFFC4E7FF)
+                            : const Color(0xFFBDC8D1),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1263,6 +1391,555 @@ Repository: `$repoName`
         ],
       ),
     );
+  }
+
+  // =========================================================
+  // Governance section loaders (honest errors, no mock data)
+  // =========================================================
+  Future<void> _loadSessions({bool silent = false}) async {
+    if (!silent) setState(() => _sectionLoading = true);
+    try {
+      final data = await _api.getSessions(limit: 200);
+      if (!mounted) return;
+      setState(() => _sessionsData = data);
+    } catch (e) {
+      if (!silent) _addLog('Sessions load failed: $e', 'error');
+    } finally {
+      if (mounted) setState(() => _sectionLoading = false);
+    }
+  }
+
+  Future<void> _loadMemory({bool silent = false}) async {
+    if (!silent) setState(() => _sectionLoading = true);
+    try {
+      final data = await _api.getMemories();
+      if (!mounted) return;
+      setState(() => _memoryData = data);
+    } catch (e) {
+      if (!silent) _addLog('Memory load failed: $e', 'error');
+    } finally {
+      if (mounted) setState(() => _sectionLoading = false);
+    }
+  }
+
+  Future<void> _submitMemory() async {
+    final topic = _memoryTopicController.text.trim();
+    final content = _memoryContentController.text.trim();
+    if (topic.isEmpty || content.isEmpty) {
+      _addLog('Memory store skipped: topic and content are required.', 'error');
+      return;
+    }
+    setState(() => _sectionLoading = true);
+    try {
+      final res = await _api.storeMemory(topic: topic, content: content);
+      _memoryTopicController.clear();
+      _memoryContentController.clear();
+      _addLog("Memory stored: ${res['topic']}", 'ceo');
+      await _loadMemory(silent: true);
+    } catch (e) {
+      _addLog('Memory store failed: $e', 'error');
+    } finally {
+      if (mounted) setState(() => _sectionLoading = false);
+    }
+  }
+
+  Future<void> _loadSecurity() async {
+    setState(() => _sectionLoading = true);
+    try {
+      final data = await _api.getSecurityPosture();
+      if (!mounted) return;
+      setState(() => _securityData = data);
+    } catch (e) {
+      _addLog('Security load failed: $e', 'error');
+    } finally {
+      if (mounted) setState(() => _sectionLoading = false);
+    }
+  }
+
+  Future<void> _loadSystem() async {
+    setState(() => _sectionLoading = true);
+    try {
+      final data = await _api.getSystemInfo();
+      if (!mounted) return;
+      setState(() => _systemData = data);
+    } catch (e) {
+      _addLog('System load failed: $e', 'error');
+    } finally {
+      if (mounted) setState(() => _sectionLoading = false);
+    }
+  }
+
+  // =========================================================
+  // Shared governance UI helpers
+  // =========================================================
+  Widget _govCard({required String title, required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B).withAlpha(100),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF38BDF8).withAlpha(30)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: Color(0xFFC4E7FF),
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _govKV(String key, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 190,
+            child: Text(
+              key,
+              style: const TextStyle(
+                fontFamily: 'monospace', fontSize: 11, color: Color(0xFF87929A)),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value.isEmpty ? '—' : value,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.35,
+                color: valueColor ?? const Color(0xFFD4E4FA),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _govStatusColor(String status) {
+    switch (status) {
+      case 'completed':
+        return const Color(0xFF34D399);
+      case 'awaiting_ceo_decision':
+      case 'pending_ceo_review':
+        return const Color(0xFFFBBF24);
+      case 'processing_in_background':
+        return const Color(0xFF38BDF8);
+      case 'skipped':
+        return const Color(0xFFF87171);
+      default:
+        return const Color(0xFFBDC8D1);
+    }
+  }
+
+  Widget _govLoadingOr(Widget child) {
+    if (_sectionLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
+        ),
+      );
+    }
+    return child;
+  }
+
+  // =========================================================
+  // SESSIONS PANEL — full governance registry of fleet sessions
+  // =========================================================
+  Widget _buildSessionsPanel() {
+    final sessions = (_sessionsData['sessions'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    final count = (_sessionsData['count'] ?? sessions.length).toString();
+
+    return _govLoadingOr(SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _govCard(
+            title: 'Session Registry — $count record(s)',
+            children: [
+              const Text(
+                'Audit trail of every fleet execution. State is persisted per '
+                'session_id with tenant isolation (Cloud SQL RLS in production).',
+                style: TextStyle(fontSize: 12, color: Color(0xFF87929A), height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              if (sessions.isEmpty)
+                const Text(
+                  'No sessions recorded yet — trigger a Discovery cycle in the FLEET section.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF87929A)),
+                ),
+              for (final s in sessions) ..._sessionRow(s),
+            ],
+          ),
+        ],
+      ),
+    ));
+  }
+
+  List<Widget> _sessionRow(Map<String, dynamic> s) {
+    final status = (s['status'] ?? 'unknown').toString();
+    final color = _govStatusColor(status);
+    final state = s['state'];
+    final stateKeys = state is Map ? state.keys.take(6).toList() : const [];
+    return [
+      Container(height: 1, color: Colors.white.withAlpha(15)),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              (s['session_id'] ?? '?').toString(),
+              style: const TextStyle(
+                fontFamily: 'monospace', fontSize: 12, color: Color(0xFFC4E7FF)),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            status,
+            style: TextStyle(
+              fontFamily: 'monospace', fontSize: 10, fontWeight: FontWeight.w700,
+              color: color),
+          ),
+        ],
+      ),
+      const SizedBox(height: 6),
+      _govKV('current_agent', (s['current_agent'] ?? '—').toString()),
+      _govKV('tenant_id', (s['tenant_id'] ?? '—').toString()),
+      _govKV('updated_at', (s['updated_at'] ?? '—').toString()),
+      if (stateKeys.isNotEmpty)
+        _govKV('state_keys', stateKeys.join(', ')),
+      const SizedBox(height: 6),
+    ];
+  }
+
+  // =========================================================
+  // MEMORY PANEL — semantic memory bank with CEO ingestion
+  // =========================================================
+  Widget _buildMemoryPanel() {
+    final memories = (_memoryData['memories'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    final count = (_memoryData['count'] ?? memories.length).toString();
+    final tenant = (_memoryData['tenant_id'] ?? 'default_enterprise').toString();
+
+    return _govLoadingOr(SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _govCard(
+            title: 'Store Memory Fact',
+            children: [
+              const Text(
+                'CEO knowledge ingestion — facts stored here are tenant-isolated '
+                'and searchable by the fleet (pgvector / text-embedding-005).',
+                style: TextStyle(fontSize: 12, color: Color(0xFF87929A), height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _memoryTopicController,
+                style: const TextStyle(fontSize: 13, color: Color(0xFFD4E4FA)),
+                decoration: _govInputDecoration('Topic (e.g. compliance-constraints)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _memoryContentController,
+                style: const TextStyle(fontSize: 13, color: Color(0xFFD4E4FA)),
+                maxLines: 3,
+                decoration: _govInputDecoration('Content (the fact itself)'),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _sectionLoading ? null : _submitMemory,
+                icon: const Icon(Icons.psychology, size: 16, color: Color(0xFF00354A)),
+                label: const Text('STORE MEMORY',
+                    style: TextStyle(
+                        color: Color(0xFF00354A),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF38BDF8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  elevation: 0,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _govCard(
+            title: 'Memory Bank — $count record(s) — tenant: $tenant',
+            children: [
+              if (memories.isEmpty)
+                const Text(
+                  'No memories stored yet. Facts are also written automatically '
+                  'by the fleet during discovery, CEO decisions and completion.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF87929A)),
+                ),
+              for (final m in memories) ..._memoryRow(m),
+            ],
+          ),
+        ],
+      ),
+    ));
+  }
+
+  List<Widget> _memoryRow(Map<String, dynamic> m) {
+    return [
+      Container(height: 1, color: Colors.white.withAlpha(15)),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          const Icon(Icons.psychology, size: 14, color: Color(0xFFC084FC)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              (m['topic'] ?? '?').toString(),
+              style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFC4E7FF)),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Text(
+            (m['tenant_id'] ?? '—').toString(),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Color(0xFF87929A)),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      SelectableText(
+        (m['content'] ?? '').toString(),
+        style: const TextStyle(fontSize: 12, height: 1.35, color: Color(0xFFD4E4FA)),
+      ),
+      const SizedBox(height: 4),
+      _govKV('created_at', (m['created_at'] ?? '—').toString()),
+      const SizedBox(height: 4),
+    ];
+  }
+
+  InputDecoration _govInputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF87929A)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(4),
+        borderSide: const BorderSide(color: Color(0xFF3E484F)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(4),
+        borderSide: const BorderSide(color: Color(0xFF3E484F)),
+      ),
+      isDense: true,
+    );
+  }
+
+  Widget _buildSecurityPanel() {
+    final tenants = (_securityData['tenants_observed'] as List<dynamic>? ?? [])
+        .map((t) => t.toString())
+        .toList();
+    final gates =
+        (_securityData['human_in_the_loop_gates'] as List<dynamic>? ?? [])
+            .map((g) => g.toString())
+            .toList();
+
+    return _govLoadingOr(SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _govCard(
+            title: 'Security & IAM Posture',
+            children: [
+              const Text(
+                'Live view of the controls protecting the fleet: identity, '
+                'isolation, and human oversight gates.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF87929A), height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              _govKV('Service-to-Service Auth',
+                  (_securityData['service_to_service_auth'] ?? '—').toString()),
+              _govKV('Dart Node Auth Policy',
+                  (_securityData['dart_node_auth_policy'] ?? '—').toString()),
+              _govKV('Session Isolation',
+                  (_securityData['session_isolation'] ?? '—').toString()),
+              _govKV('Memory Isolation',
+                  (_securityData['memory_tenant_isolation'] ?? '—').toString()),
+              _govKV('Skip Safety',
+                  (_securityData['skip_safety'] ?? '—').toString()),
+              _govKV('Git Providers',
+                  ((_securityData['git_providers'] as List<dynamic>? ?? [])
+                      .join(', '))),
+              _govKV('Session Records',
+                  (_securityData['session_records'] ?? 0).toString()),
+              _govKV('Memory Records',
+                  (_securityData['memory_records'] ?? 0).toString()),
+              _govKV('CORS Policy',
+                  (_securityData['cors_policy'] ?? '—').toString()),
+              const SizedBox(height: 12),
+              _govChipSection(
+                label: 'TENANTS OBSERVED (RLS KEYS)',
+                items: tenants,
+                borderColor: const Color(0xFF14B8A6).withAlpha(70),
+                textColor: const Color(0xFF14B8A6),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'HUMAN-IN-THE-LOOP GATES',
+                style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    letterSpacing: 0.8,
+                    color: Color(0xFF87929A)),
+              ),
+              const SizedBox(height: 6),
+              for (final g in gates)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.verified_user,
+                          size: 13, color: Color(0xFF34D399)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          g,
+                          style: const TextStyle(
+                              fontSize: 12, height: 1.35, color: Color(0xFFD4E4FA)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    ));
+  }
+
+  Widget _govChipSection({
+    required String label,
+    required List<String> items,
+    required Color borderColor,
+    required Color textColor,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10,
+              letterSpacing: 0.8,
+              color: Color(0xFF87929A)),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: items
+              .map((item) => Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF020617),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Text(
+                      item,
+                      style: TextStyle(
+                          fontFamily: 'monospace', fontSize: 10, color: textColor),
+                    ),
+                  ))
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSystemPanel() {
+    final agents = (_systemData['agents'] as List<dynamic>? ?? [])
+        .map((a) => a.toString())
+        .toList();
+
+    return _govLoadingOr(SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _govCard(
+            title: 'System Introspection — v${(_systemData['version'] ?? '?')}',
+            children: [
+              const Text(
+                'Architecture of the running orchestrator: engine, agents, '
+                'stores and environment configuration.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF87929A), height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              _govKV('Execution Engine',
+                  (_systemData['execution_engine'] ?? '—').toString()),
+              _govKV('Default Mode',
+                  (_systemData['default_execution_mode'] ?? '—').toString()),
+              _govKV('Session Store',
+                  (_systemData['session_store'] ?? '—').toString()),
+              _govKV('Memory Store',
+                  (_systemData['memory_store'] ?? '—').toString()),
+              _govKV('Scheduler Interval',
+                  '${_systemData['scheduler_interval_minutes'] ?? '—'} min'),
+              _govKV('Dart Node URL',
+                  (_systemData['dart_node_url'] ?? '—').toString()),
+              _govKV('Vertex AI Mode',
+                  (_systemData['vertex_ai_mode'] ?? '—').toString()),
+              _govKV('Cloud Location',
+                  (_systemData['cloud_location'] ?? '—').toString()),
+              const SizedBox(height: 12),
+              _govChipSection(
+                label: 'AGENT FLEET (${agents.length})',
+                items: agents,
+                borderColor: const Color(0xFF38BDF8).withAlpha(70),
+                textColor: const Color(0xFF7BD0FF),
+              ),
+              const SizedBox(height: 12),
+              _govKV('HITL Gates',
+                  ((_systemData['hitl_gates'] as List<dynamic>? ?? [])
+                      .join('  •  '))),
+            ],
+          ),
+        ],
+      ),
+    ));
   }
 
   Widget _buildLogsSidebar() {

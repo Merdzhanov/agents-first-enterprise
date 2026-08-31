@@ -354,3 +354,67 @@ def test_invalid_decision_choice_rejected(client: TestClient) -> None:
         json={"session_id": "it_invalid", "decision_choice": "yolo_everything"},
     )
     assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------
+# 7. Governance surfaces: sessions registry, memory bank, security, system
+# ---------------------------------------------------------------------
+def test_sessions_registry_lists_created_sessions(client: TestClient) -> None:
+    client.post("/fleet/discovery", json={"session_id": "gov_sess_1", "raw_feed": {}})
+    res = client.get("/fleet/sessions?limit=50&include_state=true")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["count"] >= 1
+    ids = [s["session_id"] for s in body["sessions"]]
+    assert "gov_sess_1" in ids
+    record = next(s for s in body["sessions"] if s["session_id"] == "gov_sess_1")
+    assert {"status", "current_agent", "state", "tenant_id", "updated_at"} <= set(record)
+
+
+def test_memory_store_and_list_with_tenant_isolation(client: TestClient) -> None:
+    res = client.post(
+        "/fleet/memory",
+        json={
+            "topic": "deployment_policy",
+            "content": "Always require CEO approval before Cloud Run deploy.",
+            "tenant_id": "tenant_alpha",
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "stored"
+
+    listed = client.get("/fleet/memory").json()
+    assert listed["count"] >= 1
+    topics = [m["topic"] for m in listed["memories"]]
+    assert "deployment_policy" in topics
+
+    # Semantic search on the bank returns the stored fact for its tenant
+    searched = client.get(
+        "/fleet/memory", params={"tenant_id": "tenant_alpha"}
+    ).json()
+    assert all(m["tenant_id"] == "tenant_alpha" for m in searched["memories"])
+
+
+def test_security_posture_reports_controls(client: TestClient) -> None:
+    res = client.get("/fleet/security")
+    assert res.status_code == 200
+    body = res.json()
+    assert "OIDC" in body["service_to_service_auth"]
+    assert "RLS" in body["session_isolation"]
+    assert len(body["human_in_the_loop_gates"]) == 2
+    assert isinstance(body["tenants_observed"], list)
+    assert body["cors_policy"].startswith("allow_origins")
+
+
+def test_system_introspection_exposes_engine(client: TestClient) -> None:
+    res = client.get("/fleet/system")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["execution_engine"].startswith("Google ADK")
+    assert body["default_execution_mode"] == "adk_runner"
+    assert set(body["agents"]) == {
+        "ScoutAgent", "PlannerAgent", "ArchitectAgent",
+        "LeadDevAgent", "MarketingAgent", "DeploymentAgent",
+    }
+    assert "pgvector" in body["memory_store"]
+    assert "scheduler_interval_minutes" in body

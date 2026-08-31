@@ -100,6 +100,11 @@ class DiscoveryScheduler:
         """Stops the local scheduler loop."""
         self._is_running = False
 
+    @property
+    def is_running(self) -> bool:
+        """Whether the in-process scheduler loop is currently active."""
+        return self._is_running
+
 
 # =====================================================================
 # ADK WEB INTERACTIVE WRAPPERS & EXPORTS

@@ -125,6 +125,86 @@ class ApiService {
     }
     return decoded;
   }
+
+  /// Governance registry of all fleet sessions (audit trail).
+  Future<Map<String, dynamic>> getSessions({int limit = 100}) async {
+    final decoded = await _send(
+      () => _client
+          .get(Uri.parse('$baseUrl/fleet/sessions?limit=$limit'))
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/sessions');
+    }
+    return decoded;
+  }
+
+  /// Semantic memory bank listing (tenant-isolated).
+  Future<Map<String, dynamic>> getMemories({String? tenantId}) async {
+    final qp = tenantId == null
+        ? ''
+        : '?tenant_id=${Uri.encodeComponent(tenantId)}';
+    final decoded = await _send(
+      () => _client
+          .get(Uri.parse('$baseUrl/fleet/memory$qp'))
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/memory');
+    }
+    return decoded;
+  }
+
+  /// Stores a semantic memory fact (CEO knowledge ingestion).
+  Future<Map<String, dynamic>> storeMemory({
+    required String topic,
+    required String content,
+    String tenantId = 'default_enterprise',
+  }) async {
+    final decoded = await _send(
+      () => _client
+          .post(
+            Uri.parse('$baseUrl/fleet/memory'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'topic': topic,
+              'content': content,
+              'tenant_id': tenantId,
+            }),
+          )
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from POST /fleet/memory');
+    }
+    return decoded;
+  }
+
+  /// Live security & IAM posture of the fleet.
+  Future<Map<String, dynamic>> getSecurityPosture() async {
+    final decoded = await _send(
+      () => _client
+          .get(Uri.parse('$baseUrl/fleet/security'))
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/security');
+    }
+    return decoded;
+  }
+
+  /// System health & architecture introspection.
+  Future<Map<String, dynamic>> getSystemInfo() async {
+    final decoded = await _send(
+      () => _client
+          .get(Uri.parse('$baseUrl/fleet/system'))
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/system');
+    }
+    return decoded;
+  }
 }
 
 

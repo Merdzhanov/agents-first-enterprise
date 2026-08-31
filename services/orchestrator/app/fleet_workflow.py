@@ -28,7 +28,7 @@ from google.adk.workflow import START, Workflow, node
 from google.genai import types as genai_types
 
 from .agents import ArchitectAgent, LeadDevAgent, MarketingAgent, PlannerAgent, ScoutAgent
-from .db import CloudSessionManager
+from .db import CloudSessionManager, VectorMemoryManager
 from .deployer import DeploymentAgent
 from .llm import VertexGeminiClient
 from .tools import ToolContext
@@ -40,6 +40,7 @@ CEO_DEPLOYMENT_GATE = "ceo_deployment_gate"
 # Shared singletons (imported by main.py — one instance per process).
 SESSION_DB = CloudSessionManager()
 LLM_CLIENT = VertexGeminiClient()
+MEMORY_DB = VectorMemoryManager()
 
 
 # ---------------------------------------------------------------------
@@ -82,6 +83,21 @@ async def scout_node(ctx: Any):
         "success" if scout_result.status == "success" else "error",
         f"ADK node: discovery {scout_result.status}.",
     )
+    # Long-term memory: record every discovered opportunity (never breaks discovery).
+    if scout_result.status == "success":
+        opp = tc.state.get("active_opportunity") or {}
+        try:
+            MEMORY_DB.store_memory(
+                topic="hackathon_discovery",
+                content=(
+                    f"Discovered hackathon '{opp.get('title', 'unknown')}' "
+                    f"(prize pool {opp.get('prize_pool', 'n/a')}, deadline "
+                    f"{opp.get('submission_deadline', 'n/a')}) — {opp.get('url', '')}"
+                ),
+                metadata={"session_id": tc.session_id, "opportunity_id": opp.get("id")},
+            )
+        except Exception as mem_err:
+            SESSION_DB.append_trace(tc.session_id, "ScoutAgent", "error", f"Memory store failed: {mem_err}")
     yield {"status": scout_result.status}
 
 
@@ -104,12 +120,32 @@ async def planner_gate_node(ctx: Any):
         )
         _sync_state(ctx, tc)
         if result.status == "skipped":
+            try:
+                MEMORY_DB.store_memory(
+                    topic="ceo_decision",
+                    content="CEO chose skip_implementation — pipeline halted with zero spend.",
+                    metadata={"session_id": tc.session_id, "decision": decision},
+                )
+            except Exception:
+                pass
             yield _noop(ctx, "CEO chose skip_implementation")
             return
         SESSION_DB.append_trace(
             tc.session_id, "PlannerAgent", "agent",
             f"ADK node: decision processed, repo '{tc.state.get('git_repo', {}).get('repo_name')}'.",
         )
+        try:
+            idea = tc.state.get("selected_idea") or {}
+            MEMORY_DB.store_memory(
+                topic="ceo_decision",
+                content=(
+                    f"CEO decision '{decision}' selected '{idea.get('title', 'n/a')}' "
+                    f"→ provisioning repo '{tc.state.get('git_repo', {}).get('repo_name', 'n/a')}'."
+                ),
+                metadata={"session_id": tc.session_id, "decision": decision},
+            )
+        except Exception as mem_err:
+            SESSION_DB.append_trace(tc.session_id, "CEO", "error", f"Memory store failed: {mem_err}")
         yield {"decision": decision, "repo_name": tc.state.get("git_repo", {}).get("repo_name")}
         return
 
@@ -178,8 +214,30 @@ async def marketing_node(ctx: Any):
         tc.session_id, "MarketingAgent", "success",
         "ADK node: Devpost submission package assembled.",
     )
+    try:
+        repo_name = (tc.state.get("git_repo") or {}).get("repo_name", "prototype")
+        idea_title = (tc.state.get("selected_idea") or {}).get("title", "prototype")
+        MEMORY_DB.store_memory(
+            topic="pipeline_completion",
+            content=(
+                f"Pipeline completed: '{idea_title}' → repo '{repo_name}' with architecture, "
+                f"generated code and Devpost submission package."
+            ),
+            metadata={"session_id": tc.session_id, "repo_name": repo_name},
+        )
+    except Exception:
+        pass
     yield {"agent": result.agent_name, "status": result.status}
 
+
+# Node identifiers exposed via /fleet/system for the governance dashboard.
+WORKFLOW_NODES = [
+    "scout_node",
+    "planner_gate_node",
+    "architect_node",
+    "leaddev_node",
+    "marketing_node",
+]
 
 FLEET_WORKFLOW = Workflow(
     name="enterprise_fleet_workflow",
@@ -302,6 +360,7 @@ __all__ = [
     "FLEET_WORKFLOW",
     "SESSION_DB",
     "LLM_CLIENT",
+    "MEMORY_DB",
     "start_fleet_run",
     "resume_fleet_run",
 ]
