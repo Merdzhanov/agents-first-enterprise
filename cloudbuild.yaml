@@ -4,6 +4,8 @@ steps:
   # ==========================================
   # 1. Build the Python Docker image
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-orchestrator'
+    waitFor: ['-'] # Starts immediately
     args: 
       - 'build'
       - '-t'
@@ -12,12 +14,16 @@ steps:
 
   # 2. Push image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-orchestrator'
+    waitFor: ['build-orchestrator']
     args: 
       - 'push'
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/orchestrator:$BUILD_ID'
 
-  # 3. Deploy to Cloud Run (with Secret Manager integration)
+  # 3. Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-orchestrator'
+    waitFor: ['push-orchestrator']
     entrypoint: gcloud
     args:
       - 'run'
@@ -37,6 +43,8 @@ steps:
   # ==========================================
   # 4. Build the Dart Docker image
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-dart-node'
+    waitFor: ['-'] # Starts immediately, parallel to Orchestrator
     args: 
       - 'build'
       - '-t'
@@ -45,12 +53,16 @@ steps:
 
   # 5. Push image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-dart-node'
+    waitFor: ['build-dart-node']
     args: 
       - 'push'
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/dart-node:$BUILD_ID'
 
   # 6. Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-dart-node'
+    waitFor: ['push-dart-node']
     entrypoint: gcloud
     args:
       - 'run'
@@ -66,9 +78,10 @@ steps:
   # ==========================================
   # SERVICE 3: FRONTEND (Flutter Web)
   # ==========================================
-  # 7. Build Flutter Web (Compiles Dart to JS/Wasm)
-  # 7. Build Flutter Web (Standard WebAssembly / HTML fallback)
+  # 7. Build Flutter Web
   - name: 'ghcr.io/cirruslabs/flutter:stable'
+    id: 'build-flutter-web'
+    waitFor: ['-'] # Starts immediately, parallel to backend services
     dir: 'frontend/governance_dashboard'
     entrypoint: 'flutter'
     args: 
@@ -79,6 +92,8 @@ steps:
 
   # 8. Build the Frontend Docker image (Nginx wrapper)
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend-docker'
+    waitFor: ['build-flutter-web']
     dir: 'frontend/governance_dashboard'
     args: 
       - 'build'
@@ -88,12 +103,16 @@ steps:
 
   # 9. Push Frontend image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    waitFor: ['build-frontend-docker']
     args: 
       - 'push'
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/governance-dashboard:$BUILD_ID'
 
   # 10. Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    waitFor: ['push-frontend']
     entrypoint: gcloud
     args:
       - 'run'
@@ -113,6 +132,8 @@ steps:
   # FINAL STEP: Print Deployment URLs
   # ==========================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'print-urls'
+    waitFor: ['deploy-orchestrator', 'deploy-dart-node', 'deploy-frontend'] # Изчаква всички деплои да приключат
     entrypoint: 'bash'
     args:
       - '-c'
@@ -127,3 +148,4 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8' # Recommended for parallel builds
