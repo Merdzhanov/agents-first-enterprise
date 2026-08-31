@@ -43,10 +43,8 @@ class TestOrchestratorFleet(unittest.TestCase):
 
         self.assertEqual(result.status, "success")
         self.assertIn("Google Cloud", result.message)
-        self.assertIsNotNone(result.handoff)
-        handoff = result.handoff
-        self.assertIsInstance(handoff, Handoff)
-        self.assertEqual(handoff.target_agent, "PlannerAgent")
+        assert isinstance(result.handoff, Handoff)
+        self.assertEqual(result.handoff.target_agent, "PlannerAgent")
         self.assertIn("active_opportunity", context.state)
 
     def test_scout_stores_top_five_hackathons_with_links(self):
@@ -80,12 +78,10 @@ class TestOrchestratorFleet(unittest.TestCase):
         result = planner.formulate_proposals(scout_result.data, context)
 
         self.assertEqual(result.status, "awaiting_ceo_decision")
-        self.assertIsNotNone(result.request_input)
-        req_input = result.request_input
-        self.assertIsInstance(req_input, RequestInput)
-        self.assertEqual(len(req_input.options), 4)
+        assert isinstance(result.request_input, RequestInput)
+        self.assertEqual(len(result.request_input.options), 4)
 
-        option_ids = [opt["id"] for opt in req_input.options]
+        option_ids = [opt["id"] for opt in result.request_input.options]
         self.assertIn("approve_idea_a", option_ids)
         self.assertIn("approve_idea_b", option_ids)
         self.assertIn("custom_idea", option_ids)
