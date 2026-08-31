@@ -6,7 +6,7 @@ for Human-in-the-Loop CEO approval, and verifies scale-to-zero Cloud Run rollout
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from .tools import RequestInput, ToolContext
 
@@ -15,7 +15,23 @@ class DeploymentAgent:
     """Manages Cloud Build containerization and Cloud Run deployment upon CEO approval."""
     name: str = "DeploymentAgent"
 
-    def prepare_deployment_plan(self, context: ToolContext) -> RequestInput:
+    def run(self, context: ToolContext) -> Dict[str, Any]:
+        """
+        Main execution entrypoint optimized for ADK Workflow Runner.
+        
+        Intelligently pauses for CEO approval if a decision hasn't been made,
+        or executes the deployment if the decision is already present in the state.
+        """
+        decision = context.state.get("ceo_deployment_decision")
+        
+        if not decision:
+            # Native ADK Runner pausing: this raises the RequestInput exception 
+            # which the Runner natively catches to safely park the session.
+            self.prepare_deployment_plan(context)
+            
+        return self.execute_deployment(decision, context)
+
+    def prepare_deployment_plan(self, context: ToolContext) -> None:
         """Formulates the deployment specification and raises a RequestInput approval gate."""
         selected_idea = context.state.get("selected_idea", {})
         repo = context.state.get("git_repo", {})
@@ -60,14 +76,14 @@ images:
         ]
 
         raise RequestInput(
-            prompt=f"Prototype '{selected_idea.get('title')}' is code-complete and tested. Please confirm deployment to Google Cloud Run.",
+            prompt=f"Prototype '{selected_idea.get('title', 'Project')}' is code-complete and tested. Please confirm deployment to Google Cloud Run.",
             state_key="ceo_deployment_decision",
             options=options,
             metadata={"stage": "CEO_DEPLOYMENT_GATE", "repo_name": repo_name},
         )
 
     def request_deployment_approval(self, context: ToolContext) -> Dict[str, Any]:
-        """Helper method to generate the approval card payload safely without throwing exceptions directly."""
+        """Helper method to generate the approval card payload safely for Manual Mode execution."""
         try:
             self.prepare_deployment_plan(context)
         except RequestInput as req:

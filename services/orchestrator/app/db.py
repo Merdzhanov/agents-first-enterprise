@@ -143,3 +143,11 @@ class VectorMemoryManager:
         # Sort by highest score (closest vector simulation) and slice top_k
         scored_results.sort(key=lambda x: x[0], reverse=True)
         return [res[1] for res in scored_results[:top_k]]
+
+
+# =====================================================================
+# ADK ALIASES & EXPORTS (ADK Integration Optimization)
+# =====================================================================
+
+AdkCloudSessionManager = CloudSessionManager
+AdkVectorMemoryManager = VectorMemoryManager

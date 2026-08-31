@@ -6,7 +6,22 @@ import os
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Callable
+
+# -------------------------------------------------------------------
+# ADK TOOL DECORATOR & HELPER
+# -------------------------------------------------------------------
+def AdkTool(name: Optional[str] = None, description: Optional[str] = None):
+    """
+    Decorator to mark functions as ADK-compatible tools.
+    Allows function metadata to be exposed directly to ADK Runners and Agents.
+    """
+    def decorator(func: Callable):
+        func.__adk_tool__ = True
+        func.__adk_name__ = name or func.__name__
+        func.__adk_description__ = description or func.__doc__ or ""
+        return func
+    return decorator
 
 
 def get_oidc_token(audience: str) -> Optional[str]:
@@ -77,7 +92,7 @@ class ToolContext:
     memory_bank: List[Dict[str, Any]] = field(default_factory=list)
 
     def search_memory(self, query: str) -> List[Dict[str, Any]]:
-        # OPTIMIZATION: Updated to match the "content" key used in VectorMemoryManager
+        # Matching the "content" key used in VectorMemoryManager
         q = query.lower()
         return [
             m for m in self.memory_bank
@@ -85,6 +100,10 @@ class ToolContext:
         ]
 
 
+@AdkTool(
+    name="execute_dart_task",
+    description="Executes a deterministic task by calling the Dart Shelf Functional Node via HTTP."
+)
 def execute_dart_task(
     endpoint_path: str,
     payload: Dict[str, Any],
@@ -111,7 +130,6 @@ def execute_dart_task(
         id_token = get_oidc_token(audience=base_url)
         if id_token:
             headers["Authorization"] = f"Bearer {id_token}"
-
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
@@ -166,6 +184,10 @@ def execute_dart_task(
         return {"status": "error", "message": str(err)}
 
 
+@AdkTool(
+    name="propose_ideas_to_ceo",
+    description="Submits synthesized prototype proposals to the CEO for HITL approval."
+)
 def propose_ideas_to_ceo(
     idea_a: Dict[str, Any],
     idea_b: Dict[str, Any],
@@ -216,3 +238,12 @@ def propose_ideas_to_ceo(
         options=options,
         metadata={"stage": "CEO_PROPOSAL_GATE", "ideas_count": 2},
     )
+
+
+# =====================================================================
+# ADK ALIASES (Compatibility Optimization)
+# =====================================================================
+
+AdkToolContext = ToolContext
+AdkRequestInput = RequestInput
+AdkHandoff = Handoff

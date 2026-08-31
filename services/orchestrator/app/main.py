@@ -7,6 +7,12 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+# -------------------------------------------------------------------
+# ADK ORCHESTRATION IMPORTS
+# -------------------------------------------------------------------
+from google import Workflow as AdkWorkflow
+from google import Runner as AdkRunner
+
 from .agents import (
     ArchitectAgent,
     LeadDevAgent,
@@ -21,9 +27,9 @@ from .scheduler import DiscoveryScheduler
 from .tools import ToolContext
 
 app = FastAPI(
-    title="Agent-First Enterprise Orchestration Fleet",
-    version="3.0.0",
-    description="Enterprise Google Cloud Multi-Agent Orchestrator with Vertex AI Gemini 3.5 and Cloud SQL pgvector",
+    title="Agent-First Enterprise Orchestration Fleet (Dual Mode)",
+    version="3.1.0",
+    description="Enterprise Google Cloud Multi-Agent Orchestrator supporting both Manual and ADK Runner pipelines.",
 )
 
 app.add_middleware(
@@ -40,9 +46,42 @@ MEMORY_DB = VectorMemoryManager()
 LLM_CLIENT = VertexGeminiClient()
 SCHEDULER = DiscoveryScheduler(session_db=SESSION_DB, llm=LLM_CLIENT)
 
+# -------------------------------------------------------------------
+# ADK WORKFLOW DEFINITION
+# -------------------------------------------------------------------
+@AdkWorkflow(name="EnterpriseFleetWorkflow", description="Full Autonomous Prototyping Pipeline")
+def enterprise_fleet_workflow(raw_feed: Dict[str, Any]) -> Dict[str, Any]:
+    """ADK native workflow representing the full DAG execution."""
+    context = ToolContext(session_id="adk_interactive_session")
+    
+    scout = ScoutAgent()
+    scout_res = scout.run(raw_feed, context)
+    if scout_res.status != "success":
+        return {"status": "halted", "reason": scout_res.message}
+        
+    planner = PlannerAgent(llm=LLM_CLIENT)
+    planner.formulate_proposals(scout_res.data, context)
+    # The runner pauses here on RequestInput automatically
+    
+    ArchitectAgent(llm=LLM_CLIENT).run(context)
+    LeadDevAgent(llm=LLM_CLIENT).run(context)
+    mkt_res = MarketingAgent(llm=LLM_CLIENT).run(context)
+    
+    return {"status": "completed", "final_data": mkt_res.data}
+
+# Initialize the global ADK Runner connected to our Cloud SQL session DB
+FLEET_RUNNER = AdkRunner(
+    workflow=enterprise_fleet_workflow,
+    storage=SESSION_DB
+)
+
+# -------------------------------------------------------------------
+# FASTAPI REQUEST MODELS (ADK Runner as default)
+# -------------------------------------------------------------------
 class TriggerDiscoveryRequest(BaseModel):
     session_id: str = Field(default="session_dev_001")
     raw_feed: Dict[str, Any] = Field(default_factory=dict)
+    use_adk_runner: bool = Field(default=True, description="Toggle between ADK Runner (default) and manual orchestration")
 
 class CeoDecisionRequest(BaseModel):
     session_id: str
@@ -50,38 +89,49 @@ class CeoDecisionRequest(BaseModel):
     custom_prompt: Optional[str] = None
     git_provider: str = Field(default="github", description="github | gitlab")
     custom_repo_name: Optional[str] = Field(default=None, description="Custom or confirmed repository name")
+    use_adk_runner: bool = Field(default=True, description="Toggle between ADK Runner (default) and manual execution")
 
 class DeployConfirmRequest(BaseModel):
     session_id: str
     decision: str = Field(default="confirm_deploy_cloud_run", description="confirm_deploy_cloud_run | cancel_deployment")
 
+
+# -------------------------------------------------------------------
+# FASTAPI ENDPOINTS
+# -------------------------------------------------------------------
 @app.get("/health")
 def health_check() -> Dict[str, str]:
     return {
         "status": "healthy",
         "service": "adk-orchestrator",
-        "version": "3.0.0",
+        "version": "3.1.0",
+        "default_execution_mode": "adk_runner",
         "cloud_location": os.getenv("GOOGLE_CLOUD_LOCATION", "global"),
-        "session_store": "Cloud SQL PostgreSQL with RLS",
-        "vector_memory": "Cloud SQL pgvector (text-embedding-005)",
     }
 
 @app.post("/fleet/discovery")
 def trigger_discovery(req: TriggerDiscoveryRequest) -> Dict[str, Any]:
-    """
-    Executes Discovery Phase:
-    1. ScoutAgent discovers and extracts track requirements via Dart Node.
-    2. PlannerAgent uses Vertex AI to formulate 2 prototype proposals.
-    3. Yields RequestInput for CEO decision.
-    """
+    # --- DEFAULT: ADK RUNNER MODE ---
+    if req.use_adk_runner:
+        run_result = FLEET_RUNNER.start(
+            session_id=req.session_id,
+            inputs={"raw_feed": req.raw_feed}
+        )
+        if run_result.is_paused and run_result.pending_input:
+            return {
+                "session_id": req.session_id,
+                "status": "awaiting_ceo_decision",
+                "request_input": run_result.pending_input.to_dict(),
+                "opportunity": run_result.state.get("active_opportunity", {}),
+                "data": run_result.state.get("proposed_ideas", {}),
+                "execution_mode": "adk_runner"
+            }
+        return {"status": "error", "message": "Pipeline completed without proposing ideas."}
+
+    # --- FALLBACK: MANUAL ORCHESTRATION MODE ---
     context = ToolContext(session_id=req.session_id)
+    SESSION_DB.append_trace(req.session_id, "ScoutAgent", "dart", "Invoked Dart Functional Node with raw feeds.")
 
-    SESSION_DB.append_trace(
-        req.session_id, "ScoutAgent", "dart",
-        "Invoked Dart Functional Node (/tasks/parse-brief) with raw opportunity feeds."
-    )
-
-    # Scout Phase
     scout = ScoutAgent()
     scout_result = scout.run(req.raw_feed, context)
 
@@ -90,101 +140,85 @@ def trigger_discovery(req: TriggerDiscoveryRequest) -> Dict[str, Any]:
             "session_id": req.session_id,
             "status": scout_result.status,
             "message": scout_result.message,
-            "request_input": None,
             "data": scout_result.data,
-            "hackathons": [],
             "opportunity": scout_result.data,
+            "execution_mode": "manual"
         }
 
-    SESSION_DB.append_trace(
-        req.session_id, "PlannerAgent", "agent",
-        f"Synthesizing 2 Vertex AI proposals for '{scout_result.data.get('title')}'."
-    )
-
-    # Planner Formulates 2 Ideas via Vertex AI
+    SESSION_DB.append_trace(req.session_id, "PlannerAgent", "agent", "Synthesizing Vertex AI proposals.")
     planner = PlannerAgent(llm=LLM_CLIENT)
     planner_result = planner.formulate_proposals(scout_result.data, context)
 
-    # Save context state to Cloud SQL database (Stateless architecture)
-    SESSION_DB.save_session(
-        session_id=req.session_id,
-        status="awaiting_ceo_decision",
-        current_agent="PlannerAgent",
-        state=context.state,
-    )
+    SESSION_DB.save_session(req.session_id, "awaiting_ceo_decision", "PlannerAgent", context.state)
 
-    # Attach the source hackathon (title + URL) to each proposal so the
-    # dashboard can deep-link every suggested project to its competition.
     opportunity = context.state.get("active_opportunity", {})
     data = dict(planner_result.data)
-    for idea_key in ("idea_a", "idea_b"):
-        idea = data.get(idea_key)
-        if isinstance(idea, dict):
-            idea["hackathon_title"] = opportunity.get("title")
-            idea["hackathon_url"] = opportunity.get("url")
-
-    # Top 5 discovered hackathons for the dashboard's live hackathon board.
-    hackathons = context.state.get("discovered_hackathons", [])
 
     return {
         "session_id": req.session_id,
         "status": planner_result.status,
-        "message": planner_result.message,
         "request_input": planner_result.request_input.to_dict() if planner_result.request_input else None,
         "data": data,
-        "hackathons": hackathons,
         "opportunity": opportunity,
+        "execution_mode": "manual"
     }
 
-@app.post("/fleet/scheduled-discovery")
-async def run_scheduled_discovery() -> Dict[str, Any]:
-    """Invoked periodically by Google Cloud Scheduler via Cloud Pub/Sub."""
-    proposals = await SCHEDULER.run_discovery_cycle()
-    return {
-        "status": "success",
-        "proposals_count": len(proposals),
-        "proposals": proposals,
-    }
 
-def execute_ceo_pipeline_background(req: CeoDecisionRequest, context: ToolContext):
-    """Background task for executing heavy agent workflows without blocking HTTP response."""
-    # Execute Architect Agent with Vertex AI
-    architect = ArchitectAgent(llm=LLM_CLIENT)
-    architect.run(context)
-    SESSION_DB.append_trace(req.session_id, "ArchitectAgent", "agent", "Synthesized Cloud Native architecture and Mermaid topology.")
+def execute_ceo_pipeline_background_manual(req: CeoDecisionRequest, context: ToolContext):
+    """Background task for Manual mode."""
+    ArchitectAgent(llm=LLM_CLIENT).run(context)
+    SESSION_DB.append_trace(req.session_id, "ArchitectAgent", "agent", "Synthesized Cloud Native architecture.")
 
-    # Execute Lead Dev Agent with Iterative Scaffolding (Option B)
     dev = LeadDevAgent(llm=LLM_CLIENT)
     dev_result = dev.run(context)
-    SESSION_DB.append_trace(req.session_id, "LeadDevAgent", "agent", f"Committed {len(dev_result.data.get('files_committed', []))} files to Git.")
+    SESSION_DB.append_trace(req.session_id, "LeadDevAgent", "agent", "Committed files to Git.")
 
-    # Execute Marketing Agent with Vertex AI
-    marketing = MarketingAgent(llm=LLM_CLIENT)
-    marketing_result = marketing.run(context)
-    SESSION_DB.append_trace(req.session_id, "MarketingAgent", "success", "Assembled 4-minute demo script and Devpost submission package.")
+    MarketingAgent(llm=LLM_CLIENT).run(context)
+    SESSION_DB.append_trace(req.session_id, "MarketingAgent", "success", "Assembled Devpost package.")
 
     SESSION_DB.save_session(req.session_id, "completed", "MarketingAgent", context.state)
 
+def background_runner_resume(session_id: str, decision: str, custom_prompt: Optional[str]):
+    """Background task for ADK Runner mode."""
+    FLEET_RUNNER.resume(
+        session_id=session_id,
+        human_input={
+            "decision": decision,
+            "custom_prompt": custom_prompt
+        }
+    )
+
+
 @app.post("/fleet/ceo-decision")
 def submit_ceo_decision(req: CeoDecisionRequest, background_tasks: BackgroundTasks) -> Dict[str, Any]:
-    """
-    Processes CEO Decision Gate:
-    - If Skip: Halts safely with zero spend.
-    - If Approved: Triggers background tasks for Dart Git provisioning, Vertex AI Architect, 
-      Iterative Dev Agent, and Marketing Agent to prevent Gateway Timeouts.
-    """
-    # Load state from database for Cloud Run container safety
+    # --- DEFAULT: ADK RUNNER MODE ---
+    if req.use_adk_runner:
+        if req.decision_choice == "skip_implementation":
+            SESSION_DB.save_session(req.session_id, "skipped", "CEO", {})
+            return {"status": "skipped", "message": "Workflow archived."}
+
+        background_tasks.add_task(
+            background_runner_resume,
+            session_id=req.session_id,
+            decision=req.decision_choice,
+            custom_prompt=req.custom_prompt
+        )
+        return {
+            "session_id": req.session_id,
+            "status": "processing_in_background",
+            "message": "ADK Runner resumed.",
+            "execution_mode": "adk_runner"
+        }
+
+    # --- FALLBACK: MANUAL ORCHESTRATION MODE ---
     session_record = SESSION_DB.load_session(req.session_id)
     if not session_record:
-        raise HTTPException(status_code=404, detail="Session not found or expired")
+        raise HTTPException(status_code=404, detail="Session not found")
     
     context = ToolContext(session_id=req.session_id)
     context.state = session_record.get("state", {})
 
-    SESSION_DB.append_trace(
-        req.session_id, "CEO", "ceo",
-        f"CEO Decision: {req.decision_choice} on {req.git_provider.upper()} (repo: '{req.custom_repo_name or 'default'}')."
-    )
+    SESSION_DB.append_trace(req.session_id, "CEO", "ceo", f"CEO Decision: {req.decision_choice}")
 
     planner = PlannerAgent(llm=LLM_CLIENT)
     decision_result = planner.process_ceo_decision(
@@ -197,63 +231,17 @@ def submit_ceo_decision(req: CeoDecisionRequest, background_tasks: BackgroundTas
 
     if decision_result.status == "skipped":
         SESSION_DB.save_session(req.session_id, "skipped", "PlannerAgent", context.state)
-        return {
-            "session_id": req.session_id,
-            "status": "skipped",
-            "message": decision_result.message,
-            "pipeline_state": context.state,
-        }
+        return {"session_id": req.session_id, "status": "skipped"}
 
-    # Add heavy pipeline to background tasks
-    background_tasks.add_task(execute_ceo_pipeline_background, req, context)
-
-    # Update DB to show processing status before returning response
+    background_tasks.add_task(execute_ceo_pipeline_background_manual, req, context)
     SESSION_DB.save_session(req.session_id, "processing_in_background", "ArchitectAgent", context.state)
 
     return {
         "session_id": req.session_id,
         "status": "processing_in_background",
-        "message": "The agent fleet has started provisioning the repository and writing code on Google Cloud.",
-        "git_provider": req.git_provider,
+        "message": "Manual fleet has started processing.",
+        "execution_mode": "manual"
     }
-
-@app.post("/fleet/deploy-confirm")
-def confirm_deployment(req: DeployConfirmRequest) -> Dict[str, Any]:
-    """Handles CEO confirmation for deploying the generated prototype to Google Cloud Run."""
-    session_record = SESSION_DB.load_session(req.session_id)
-    if not session_record:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    context = ToolContext(session_id=req.session_id)
-    context.state = session_record.get("state", {})
-
-    deployer = DeploymentAgent()
-    deploy_result = deployer.execute_deployment(req.decision, context)
-
-    SESSION_DB.append_trace(
-        req.session_id, "DeploymentAgent", "success" if deploy_result.get("status") == "deployed_live" else "skip",
-        f"Deployment action executed: {deploy_result.get('status')} ({deploy_result.get('url', 'N/A')})"
-    )
-    
-    # Save state after deployer modifications
-    SESSION_DB.save_session(req.session_id, "deployment_completed", "DeploymentAgent", context.state)
-
-    return {
-        "session_id": req.session_id,
-        "deployment": deploy_result,
-        "state": context.state,
-    }
-
-@app.get("/fleet/session/{session_id}")
-def get_session_state(session_id: str) -> Dict[str, Any]:
-    record = SESSION_DB.load_session(session_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return record
-
-@app.get("/fleet/session/{session_id}/traces")
-def get_session_traces(session_id: str) -> List[Dict[str, Any]]:
-    return SESSION_DB.get_traces(session_id)
 
 if __name__ == "__main__":
     import uvicorn

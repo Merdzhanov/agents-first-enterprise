@@ -1,7 +1,7 @@
-"""Type-safe Pydantic Response Schemas for Vertex AI Gemini Structured Output."""
+"""Type-safe Pydantic Response Schemas for Vertex AI Gemini Structured Output and ADK Tools."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal, Type
 from pydantic import BaseModel, Field
 
 
@@ -38,7 +38,6 @@ class ArchitectureSpec(BaseModel):
     compute_target: str = Field(default="Google Cloud Run (min-instances=0)")
     session_store: str = Field(default="Cloud SQL PostgreSQL (with RLS)")
     vector_memory_store: str = Field(default="Cloud SQL pgvector (text-embedding-005)")
-    # Ограничаваме LLM-а само до поддържаните провайдъри
     git_provider: Literal["github", "gitlab"] = Field(default="github", description="Target Git hosting provider")
     components: List[ArchitectureComponent] = Field(default_factory=list)
     diagram_mermaid: str = Field(
@@ -59,7 +58,6 @@ class GeneratedFile(BaseModel):
     content: str = Field(
         description="Complete source code content for this file. EXACT RULE: Return RAW text only. DO NOT wrap in markdown ``` code blocks."
     )
-    # Подсказваме на модела какви езици очакваме
     language: str = Field(default="python", description="Programming or config language (e.g., python, dart, yaml, json)")
     commit_message: str = Field(description="Meaningful Git commit message")
     is_critical_for_review: bool = Field(default=False)
@@ -74,3 +72,25 @@ class SubmissionPackage(BaseModel):
     features_and_functionality: List[str] = Field(description="Bullet points of key features")
     technologies_used: List[str] = Field(description="List of Google Cloud and third-party technologies")
     learnings: str = Field(description="Key findings, engineering takeaways, and scalability observations")
+
+
+# =====================================================================
+# ADK ALIASES & SCHEMA REGISTRY (ADK Integration Optimization)
+# =====================================================================
+
+AdkIdeaProposal = IdeaProposal
+AdkDualProposalResponse = DualProposalResponse
+AdkArchitectureComponent = ArchitectureComponent
+AdkArchitectureSpec = ArchitectureSpec
+AdkFileRequest = FileRequest
+AdkGeneratedFile = GeneratedFile
+AdkSubmissionPackage = SubmissionPackage
+
+
+class AdkSchemaRegistry:
+    """Helper registry to generate OpenAI / ADK compatible JSON schemas for Vertex AI structured outputs."""
+    
+    @classmethod
+    def get_json_schema(cls, model_class: Type[BaseModel]) -> Dict[str, Any]:
+        """Converts Pydantic models into OpenAPI/ADK compatible JSON schema dictionaries."""
+        return model_class.model_json_schema()

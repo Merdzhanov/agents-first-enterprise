@@ -9,6 +9,11 @@ import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
+# -------------------------------------------------------------------
+# ADK ORCHESTRATION IMPORTS
+# -------------------------------------------------------------------
+from google import Workflow as AdkWorkflow
+
 from .agents import PlannerAgent, ScoutAgent
 from .db import CloudSessionManager
 from .llm import VertexGeminiClient
@@ -73,8 +78,8 @@ class DiscoveryScheduler:
                         "title": opp.get("title"),
                         "session_id": session_id,
                         "request_input": planner_result.request_input.to_dict(),
-                        "idea_a": context.state.get("proposed_ideas", {}).get("idea_a"),
-                        "idea_b": context.state.get("proposed_ideas", {}).get("idea_b"),
+                        "idea_a": context.state.get("idea_a"), # OPTIMIZATION: Fixed key to match context state from agents.py
+                        "idea_b": context.state.get("idea_b"),
                     })
 
                     print(f"✨ [Scheduler] Synthesized 2 proposals and paused for CEO review: '{opp.get('title')}'")
@@ -99,3 +104,29 @@ class DiscoveryScheduler:
     def stop_loop(self) -> None:
         """Stops the local scheduler loop."""
         self._is_running = False
+
+
+# =====================================================================
+# ADK WEB INTERACTIVE WRAPPERS & EXPORTS
+# Allows manual trigger and visualization of the scheduler cycle in `adk w`
+# =====================================================================
+
+@AdkWorkflow(
+    name="ADK_ScheduledDiscovery",
+    description="Interactive ADK Workflow: Manually triggers the background discovery cycle to find Devpost hackathons and synthesize CEO proposals."
+)
+def adk_scheduled_discovery_workflow() -> Dict[str, Any]:
+    """
+    Sync wrapper around the async run_discovery_cycle so it can be 
+    triggered seamlessly from the ADK Web UI Run button.
+    """
+    scheduler = DiscoveryScheduler()
+    
+    # Run the async core logic synchronously for the ADK UI session
+    proposals = asyncio.run(scheduler.run_discovery_cycle())
+    
+    return {
+        "status": "discovery_cycle_completed",
+        "new_opportunities_found": len(proposals),
+        "data": proposals
+    }
