@@ -76,7 +76,7 @@ def run_pipeline(
             print(f"  [{idx}] {opt.get('title')}")
             print(f"      Description: {opt.get('description')}")
             if opt.get("tech_stack"):
-                print(f"      Tech Stack: {', '.join(opt.get('tech_stack'))}")
+                print(f"      Tech Stack: {', '.join(opt.get('tech_stack') or [])}")
             print()
 
     # 3. PROCESS CEO DECISION
