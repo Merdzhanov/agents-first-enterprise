@@ -168,6 +168,7 @@ async def planner_gate_node(ctx: Any):
         interrupt_id=CEO_DECISION_GATE,
         message=pending["prompt"],
         payload={"options": pending["options"]},
+        response_schema=None,
     )
 
 
@@ -286,12 +287,15 @@ async def start_fleet_run(session_id: str, raw_feed: Dict[str, Any]) -> tuple:
         # Pull the canonical interrupt args straight from the emitted call
         # (RequestInput is serialized with camelCase aliases).
         fc_args: Dict[str, Any] = {}
-        for part in (pending_event.content.parts if pending_event.content else []):
-            call = getattr(part, "function_call", None)
-            if call is not None and call.name == "adk_request_input":
-                fc_args = dict(call.args or {})
-                break
-        payload = fc_args.get("payload") if isinstance(fc_args.get("payload"), dict) else {}
+        content = pending_event.content if pending_event.content is not None else None
+        if content is not None and content.parts is not None:
+            for part in content.parts:
+                call = getattr(part, "function_call", None)
+                if call is not None and call.name == "adk_request_input":
+                    fc_args = dict(call.args or {})
+                    break
+        raw_payload = fc_args.get("payload")
+        payload: Dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
         pending = {
             "type": "REQUEST_INPUT",
             "interrupt_id": (

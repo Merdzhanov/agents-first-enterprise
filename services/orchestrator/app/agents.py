@@ -366,21 +366,21 @@ class MarketingAgent:
 # =====================================================================
 
 def adk_scout_agent(raw_feed: Dict[str, Any]) -> Dict[str, Any]:
-    context = ToolContext()
+    context = ToolContext(session_id="adk_scout_session")
     scout = ScoutAgent()
     res = scout.run(raw_feed, context)
     return {"agent": res.agent_name, "status": res.status, "message": res.message, "data": res.data}
 
 
 def adk_planner_agent(opportunity: Dict[str, Any]) -> Dict[str, Any]:
-    context = ToolContext()
+    context = ToolContext(session_id="adk_planner_session")
     planner = PlannerAgent()
     res = planner.formulate_proposals(opportunity, context)
     return {"agent": res.agent_name, "status": res.status, "message": res.message, "data": res.data}
 
 
 def adk_architect_agent(selected_idea: Dict[str, Any]) -> Dict[str, Any]:
-    context = ToolContext()
+    context = ToolContext(session_id="adk_architect_session")
     context.state["selected_idea"] = selected_idea
     architect = ArchitectAgent()
     res = architect.run(context)
@@ -388,7 +388,7 @@ def adk_architect_agent(selected_idea: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def adk_fleet_orchestrator(raw_feed: Dict[str, Any]) -> Dict[str, Any]:
-    context = ToolContext()
+    context = ToolContext(session_id="adk_fleet_session")
     
     # 1. Scout
     scout_res = ScoutAgent().run(raw_feed, context)

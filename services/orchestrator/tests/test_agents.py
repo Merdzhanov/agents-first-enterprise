@@ -16,7 +16,7 @@ from app.agents import (
     PlannerAgent,
     ScoutAgent,
 )
-from app.tools import RequestInput, ToolContext
+from app.tools import Handoff, RequestInput, ToolContext
 
 
 class TestOrchestratorFleet(unittest.TestCase):
@@ -44,7 +44,9 @@ class TestOrchestratorFleet(unittest.TestCase):
         self.assertEqual(result.status, "success")
         self.assertIn("Google Cloud", result.message)
         self.assertIsNotNone(result.handoff)
-        self.assertEqual(result.handoff.target_agent, "PlannerAgent")
+        handoff = result.handoff
+        self.assertIsInstance(handoff, Handoff)
+        self.assertEqual(handoff.target_agent, "PlannerAgent")
         self.assertIn("active_opportunity", context.state)
 
     def test_scout_stores_top_five_hackathons_with_links(self):
@@ -57,15 +59,17 @@ class TestOrchestratorFleet(unittest.TestCase):
 
         self.assertEqual(result.status, "success")
         discovered = context.state.get("discovered_hackathons")
-        self.assertIsInstance(discovered, list)
-        self.assertGreaterEqual(len(discovered), 1)
-        self.assertLessEqual(len(discovered), 5)
-        for entry in discovered:
+        self.assertIsNotNone(discovered)
+        assert isinstance(discovered, list)
+        discovered_list: list = discovered
+        self.assertGreaterEqual(len(discovered_list), 1)
+        self.assertLessEqual(len(discovered_list), 5)
+        for entry in discovered_list:
             self.assertIn("title", entry)
             self.assertIn("url", entry)
             self.assertTrue(str(entry["url"]).startswith("http"))
         # Rank #1 is the active opportunity the proposals are derived from.
-        self.assertEqual(context.state["active_opportunity"], discovered[0])
+        self.assertEqual(context.state["active_opportunity"], discovered_list[0])
 
     def test_planner_proposes_two_ideas_and_request_input(self):
         context = ToolContext(session_id="test_session_002")
@@ -77,9 +81,11 @@ class TestOrchestratorFleet(unittest.TestCase):
 
         self.assertEqual(result.status, "awaiting_ceo_decision")
         self.assertIsNotNone(result.request_input)
-        self.assertEqual(len(result.request_input.options), 4)
+        req_input = result.request_input
+        self.assertIsInstance(req_input, RequestInput)
+        self.assertEqual(len(req_input.options), 4)
 
-        option_ids = [opt["id"] for opt in result.request_input.options]
+        option_ids = [opt["id"] for opt in req_input.options]
         self.assertIn("approve_idea_a", option_ids)
         self.assertIn("approve_idea_b", option_ids)
         self.assertIn("custom_idea", option_ids)

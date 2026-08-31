@@ -57,8 +57,10 @@ class VertexGeminiClient:
             print(f"GenAI Client Init Note: {e}")
             self._client = None
 
-    def _parse_json_response(self, text: str, schema_class: Any) -> Any:
+    def _parse_json_response(self, text: Optional[str], schema_class: Any) -> Any:
         """Strips markdown code blocks if the LLM hallucinated them, then validates."""
+        if text is None:
+            raise ValueError("LLM returned no text content to parse")
         clean_text = text.strip()
         if clean_text.startswith("```json"):
             clean_text = clean_text[7:]
