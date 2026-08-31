@@ -9,11 +9,6 @@ import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
-# -------------------------------------------------------------------
-# ADK ORCHESTRATION IMPORTS
-# -------------------------------------------------------------------
-from google import Workflow as AdkWorkflow
-
 from .agents import PlannerAgent, ScoutAgent
 from .db import CloudSessionManager
 from .llm import VertexGeminiClient
@@ -108,23 +103,22 @@ class DiscoveryScheduler:
 
 # =====================================================================
 # ADK WEB INTERACTIVE WRAPPERS & EXPORTS
-# Allows manual trigger and visualization of the scheduler cycle in `adk w`
+# Allows manual trigger and visualization of the scheduler cycle in `adk web`
 # =====================================================================
 
-@AdkWorkflow(
-    name="ADK_ScheduledDiscovery",
-    description="Interactive ADK Workflow: Manually triggers the background discovery cycle to find Devpost hackathons and synthesize CEO proposals."
-)
 def adk_scheduled_discovery_workflow() -> Dict[str, Any]:
-    """
-    Sync wrapper around the async run_discovery_cycle so it can be 
-    triggered seamlessly from the ADK Web UI Run button.
+    """Plain sync wrapper around the async run_discovery_cycle so it can be
+    triggered from the ADK Web UI or scripts without decorators.
+
+    (The previous version wrapped this with a non-existent @AdkWorkflow
+    decorator — google-adk 2.6.2 exposes Workflow/node via google.adk.workflow;
+    see app/fleet_workflow.py for the real graph integration.)
     """
     scheduler = DiscoveryScheduler()
-    
+
     # Run the async core logic synchronously for the ADK UI session
     proposals = asyncio.run(scheduler.run_discovery_cycle())
-    
+
     return {
         "status": "discovery_cycle_completed",
         "new_opportunities_found": len(proposals),

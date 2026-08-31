@@ -7,13 +7,6 @@ Integrates:
 - Deterministic Dart Shelf Node Execution on Cloud Run
 """
 from __future__ import annotations
-from google import Agent as AdkAgent
-from google import Workflow as AdkWorkflow
-from google import Runner as AdkRunner
-from google import Tool as AdkTool
-from google import RequestInput as AdkRequestInput
-from google import Handoff as AdkHandoff
-from google import AgentResult as AdkAgentResult
 
 import json
 from dataclasses import dataclass
@@ -372,10 +365,6 @@ class MarketingAgent:
 # Allows running and debugging each agent visually inside `adk w`
 # =====================================================================
 
-@AdkAgent(
-    name="ADK_ScoutAgent",
-    description="Interactive ADK Scout Agent: Discovers opportunities and parses briefs."
-)
 def adk_scout_agent(raw_feed: Dict[str, Any]) -> Dict[str, Any]:
     context = ToolContext()
     scout = ScoutAgent()
@@ -383,10 +372,6 @@ def adk_scout_agent(raw_feed: Dict[str, Any]) -> Dict[str, Any]:
     return {"agent": res.agent_name, "status": res.status, "message": res.message, "data": res.data}
 
 
-@AdkAgent(
-    name="ADK_PlannerAgent",
-    description="Interactive ADK Planner Agent: Synthesizes proposals via Vertex AI."
-)
 def adk_planner_agent(opportunity: Dict[str, Any]) -> Dict[str, Any]:
     context = ToolContext()
     planner = PlannerAgent()
@@ -394,10 +379,6 @@ def adk_planner_agent(opportunity: Dict[str, Any]) -> Dict[str, Any]:
     return {"agent": res.agent_name, "status": res.status, "message": res.message, "data": res.data}
 
 
-@AdkAgent(
-    name="ADK_ArchitectAgent",
-    description="Interactive ADK Architect Agent: Generates cloud-native architectures."
-)
 def adk_architect_agent(selected_idea: Dict[str, Any]) -> Dict[str, Any]:
     context = ToolContext()
     context.state["selected_idea"] = selected_idea
@@ -406,10 +387,6 @@ def adk_architect_agent(selected_idea: Dict[str, Any]) -> Dict[str, Any]:
     return {"agent": res.agent_name, "status": res.status, "message": res.message, "data": res.data}
 
 
-@AdkAgent(
-    name="ADK_FleetOrchestrator",
-    description="Interactive ADK Full Pipeline: Runs Scout -> Planner -> Architect -> LeadDev -> Marketing"
-)
 def adk_fleet_orchestrator(raw_feed: Dict[str, Any]) -> Dict[str, Any]:
     context = ToolContext()
     
