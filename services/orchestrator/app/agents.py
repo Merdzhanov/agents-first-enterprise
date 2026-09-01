@@ -708,6 +708,7 @@ class ComplianceAgent:
             "overall": score,
             "grade": "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F",
             "blocking": critical > 0,
+
         }
         return findings
 
