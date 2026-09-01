@@ -53,13 +53,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _customDirectiveController =
       TextEditingController();
 
-  String _statusText = 'Awaiting Discovery Trigger';
+  String _statusText = 'No active session — trigger discovery to begin.';
   bool _isLoading = false;
-  String _selectedFile = 'README.md';
+  String _selectedFile = '';
 
-  // Active session for telemetry polling. Starts as the default governance
-  // session but can be reassigned when the CEO submits an independent idea.
-  String _sessionId = 'session_governance_001';
+  // Active session for telemetry polling. Empty until discovery is triggered.
+  String _sessionId = '';
   Timer? _telemetryTimer;
   List<Map<String, dynamic>> _hackathons = [];
   Map<String, dynamic> _activeOpportunity = {};
@@ -90,33 +89,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   ];
 
-  final Map<String, String> _filesContent = {
-    'README.md': '''# EphemeraFlow Governed Fleet
-
-This repository contains the auto-generated code for the 
-EphemeraFlow Multi-Agent Fleet architecture.
-
-## Getting Started
-1. Run `./setup_enterprise.sh` to initialize GCP IAM & Firestore.
-2. Deploy Dart Functional Nodes to Cloud Run.
-3. Deploy Python ADK 2.0 Orchestrator with Vertex AI endpoints.''',
-    'src/main.py': '''"""Orchestrator entry point with Vertex AI Gemini 3.5 & ADK 2.0."""
-from fastapi import FastAPI
-
-app = FastAPI(title="EphemeraFlow Fleet")''',
-    'src/agent.py': '''"""Autonomous Supervisor & Reasoning Loop."""
-from google.adk.agents import Agent
-
-supervisor = Agent(name="SupervisorAgent", model="gemini-2.5-pro")''',
-    'architecture.drawio': '''<mxfile host="65bd71144e">
-  <diagram id="arch" name="Enterprise Multi-Agent Topology">
-    <!-- Cloud Run, Firestore, Pub/Sub & Dart Functional Nodes -->
-  </diagram>
-</mxfile>''',
-    'setup.sh': '''#!/bin/bash
-echo "Provisioning Google Cloud Run, Cloud SQL RLS & Firestore..."
-gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
-  };
+  // Real artifacts from the backend — populated after CEO approval.
+  Map<String, String> _artifacts = {};
 
   @override
   void initState() {
@@ -185,6 +159,20 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
           };
         }
       });
+      // Fetch real artifacts when pipeline completes (outside setState).
+      if ((session['status'] ?? '').toString() == 'completed') {
+        try {
+          final artifacts = await _api.getSessionArtifacts(_sessionId);
+          if (artifacts.isNotEmpty && mounted) {
+            setState(() {
+              _artifacts = artifacts;
+              if (_selectedFile.isEmpty || !_artifacts.containsKey(_selectedFile)) {
+                _selectedFile = artifacts.keys.first;
+              }
+            });
+          }
+        } catch (_) {}
+      }
     } catch (_) {
       // Backend unreachable — keep last known state and local action logs.
     }
@@ -322,16 +310,6 @@ gcloud services enable aiplatform.googleapis.com run.googleapis.com''',
     setState(() {
       _isLoading = false;
       _statusText = 'Completed: "$conceptName" (${provider.toUpperCase()})';
-      _filesContent['README.md'] = '''# $conceptName
-
-Autonomous prototype provisioned on ${provider.toUpperCase()}.
-Repository: `$repoName`
-
-## Architecture
-- Google Cloud Run (scale-to-zero)
-- Dart Shelf Functional Workers
-- Python ADK 2.0 Orchestration
-- Cloud SQL Session Storage (RLS) & pgvector Memory''';
     });
   }
 
@@ -967,14 +945,8 @@ Repository: `$repoName`
               child: _buildProposalCard(
                 tag: 'Concept A',
                 idea: _ideaA,
-                fallbackTitle: 'EphemeraFlow: Governed Multi-Agent Fleet',
-                fallbackDescription:
-                    'Hybrid polyglot architecture emphasizing rapid scale-out and tear-down capabilities with Dart Shelf workers on Cloud Run.',
-                fallbackChips: ['Google ADK 2.0', 'Dart Shelf', 'Cloud Run'],
-                fallbackImpact: '99.9% Uptime',
                 impactColor: const Color(0xFF34D399),
                 gradientColors: [const Color(0xFF06B6D4), const Color(0xFF3B82F6)],
-                fallbackRepo: 'ephemeraflow-governed-fleet',
                 decisionChoice: 'approve_idea_a',
               ),
             ),
@@ -985,14 +957,8 @@ Repository: `$repoName`
               child: _buildProposalCard(
                 tag: 'Concept B',
                 idea: _ideaB,
-                fallbackTitle: 'ArmorGuard: Row-Level Secure Multi-Tenant Hub',
-                fallbackDescription:
-                    'Privacy-first architecture ensuring strict data isolation across tenant boundaries with Vertex AI Model Armor.',
-                fallbackChips: ['Vertex AI Gemini', 'Cloud SQL RLS', 'Model Armor'],
-                fallbackImpact: 'Zero Cross-Tenant Leaks',
                 impactColor: const Color(0xFFC084FC),
                 gradientColors: [const Color(0xFF9333EA), const Color(0xFFD946EF)],
-                fallbackRepo: 'armorguard-secure-agent-hub',
                 decisionChoice: 'approve_idea_b',
               ),
             ),
@@ -1007,13 +973,8 @@ Repository: `$repoName`
   Widget _buildProposalCard({
     required String tag,
     required Map<String, dynamic> idea,
-    required String fallbackTitle,
-    required String fallbackDescription,
-    required List<String> fallbackChips,
-    required String fallbackImpact,
     required Color impactColor,
     required List<Color> gradientColors,
-    required String fallbackRepo,
     required String decisionChoice,
   }) {
     final dynamicTitle = (idea['title'] ?? '').toString();
@@ -1026,18 +987,16 @@ Repository: `$repoName`
 
     return _buildConceptCard(
       conceptTag: tag,
-      title: dynamicTitle.isNotEmpty ? dynamicTitle : fallbackTitle,
-      description: dynamicDescription.isNotEmpty
-          ? dynamicDescription
-          : fallbackDescription,
-      chips: dynamicChips.isNotEmpty ? dynamicChips : fallbackChips,
-      targetImpact: dynamicImpact.isNotEmpty ? dynamicImpact : fallbackImpact,
+      title: dynamicTitle,
+      description: dynamicDescription,
+      chips: dynamicChips,
+      targetImpact: dynamicImpact,
       impactColor: impactColor,
       gradientColors: gradientColors,
       btnText: 'Approve $tag',
       onApprove: () => _approveConcept(
-        dynamicTitle.isNotEmpty ? dynamicTitle : fallbackTitle,
-        dynamicRepo.isNotEmpty ? dynamicRepo : fallbackRepo,
+        dynamicTitle,
+        dynamicRepo,
         decisionChoiceOverride: decisionChoice,
       ),
       hackathonTitle: hackathonTitle.isNotEmpty ? hackathonTitle : null,
@@ -1430,7 +1389,7 @@ Repository: `$repoName`
                     ),
                     child: ListView(
                       padding: const EdgeInsets.all(8),
-                      children: _filesContent.keys.map((filename) {
+                      children: _artifacts.keys.map((filename) {
                         final isSelected = _selectedFile == filename;
                         return InkWell(
                           onTap: () {
@@ -1518,7 +1477,7 @@ Repository: `$repoName`
                               InkWell(
                                 onTap: () {
                                   Clipboard.setData(ClipboardData(
-                                      text: _filesContent[_selectedFile] ?? ''));
+                                      text: _artifacts[_selectedFile] ?? ''));
                                   _addLog(
                                       'Copied "$_selectedFile" to clipboard.',
                                       'system');
@@ -1533,7 +1492,7 @@ Repository: `$repoName`
                           child: SingleChildScrollView(
                             padding: const EdgeInsets.all(12),
                             child: SelectableText(
-                              _filesContent[_selectedFile] ?? '',
+                              _artifacts[_selectedFile] ?? '',
                               style: const TextStyle(
                                 fontFamily: 'monospace',
                                 fontSize: 11,

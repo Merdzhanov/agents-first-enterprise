@@ -33,6 +33,10 @@ steps:
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/orchestrator:$BUILD_ID'
       - '--region'
       - 'europe-west1'
+      - '--port'
+      - '8080'
+      - '--timeout'
+      - '300s'
       - '--min-instances'
       - '0'
       - '--set-secrets'
@@ -72,6 +76,7 @@ steps:
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/agent-repo/dart-node:$BUILD_ID'
       - '--region'
       - 'europe-west1'
+      - '--allow-unauthenticated'
       - '--min-instances'
       - '0'
 
@@ -133,7 +138,7 @@ steps:
   # ==========================================
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'print-urls'
-    waitFor: ['deploy-orchestrator', 'deploy-dart-node', 'deploy-frontend'] # Изчаква всички деплои да приключат
+    waitFor: ['deploy-orchestrator', 'deploy-dart-node', 'deploy-frontend'] 
     entrypoint: 'bash'
     args:
       - '-c'

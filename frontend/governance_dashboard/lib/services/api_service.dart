@@ -112,6 +112,20 @@ class ApiService {
     return decoded.cast<Map<String, dynamic>>();
   }
 
+  /// Fetches committed artifacts (code files, docs) for a completed session.
+  /// Returns a map of filename → file content from the backend.
+  Future<Map<String, String>> getSessionArtifacts(String sessionId) async {
+    final decoded = await _send(
+      () => _client
+          .get(Uri.parse('$baseUrl/fleet/session/$sessionId/artifacts'))
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map) {
+      throw ApiException('Unexpected response shape from artifacts endpoint');
+    }
+    return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
+  }
+
   /// Fetches the current session record (status + pipeline state) so the UI can
   /// reflect in real time what the background fleet is doing right now.
   Future<Map<String, dynamic>> getSessionState(String sessionId) async {
