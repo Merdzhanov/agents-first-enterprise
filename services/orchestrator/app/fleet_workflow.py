@@ -28,7 +28,7 @@ from google.adk.sessions import InMemorySessionService
 from google.adk.workflow import START, Workflow, node
 from google.genai import types as genai_types
 
-from .agents import ArchitectAgent, LeadDevAgent, MarketingAgent, PlannerAgent, ScoutAgent
+from .agents import ArchitectAgent, ComplianceAgent, LeadDevAgent, MarketingAgent, PlannerAgent, ScoutAgent
 from .db import CloudSessionManager, VectorMemoryManager
 from .deployer import DeploymentAgent
 from .llm import VertexGeminiClient
@@ -232,12 +232,23 @@ async def marketing_node(ctx: Any):
     yield {"agent": result.agent_name, "status": result.status}
 
 
+@node(name="compliance_node")
+async def compliance_node(ctx: Any):
+    """Post-build regulatory compliance check — EU, Bulgaria, and global."""
+    tc = _tool_ctx(ctx)
+    result = ComplianceAgent(llm=LLM_CLIENT).run(tc)
+    _sync_state(ctx, tc)
+    SESSION_DB.append_trace(tc.session_id, "ComplianceAgent", "agent", "Regulatory scan completed.")
+    yield {"agent": result.agent_name, "status": result.status}
+
+
 # Node identifiers exposed via /fleet/system for the governance dashboard.
 WORKFLOW_NODES = [
     "scout_node",
     "planner_gate_node",
     "architect_node",
     "leaddev_node",
+    "compliance_node",
     "marketing_node",
 ]
 
@@ -245,7 +256,7 @@ FLEET_WORKFLOW = Workflow(
     name="enterprise_fleet_workflow",
     description="Full autonomous prototyping pipeline with Human-in-the-Loop CEO gates.",
     edges=[
-        ("START", scout_node, planner_gate_node, architect_node, leaddev_node, marketing_node),
+        ("START", scout_node, planner_gate_node, architect_node, leaddev_node, compliance_node, marketing_node),
     ],
 )
 

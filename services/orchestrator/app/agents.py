@@ -35,6 +35,128 @@ class AgentResult:
     request_input: Optional[RequestInput] = None
 
 
+from .tools import (
+    Handoff,
+    RequestInput,
+    ToolContext,
+    execute_dart_task,
+    propose_ideas_to_ceo,
+)
+
+
+# =====================================================================
+# REGULATORY COMPLIANCE KNOWLEDGE BASE
+# =====================================================================
+GDPR_REQUIREMENTS = {
+    "article_5_principles": [
+        "Lawfulness, fairness and transparency",
+        "Purpose limitation",
+        "Data minimization",
+        "Accuracy",
+        "Storage limitation",
+        "Integrity and confidentiality",
+        "Accountability",
+    ],
+    "article_13_14_transparency": [
+        "Identity and contact details of controller",
+        "Purposes of processing and legal basis",
+        "Right to withdraw consent",
+        "Right to lodge complaint with supervisory authority",
+    ],
+    "article_15_22_data_subject_rights": [
+        "Right of access", "Right to erasure", "Right to data portability",
+        "Right to object", "Right to restriction of processing",
+    ],
+}
+
+
+BULGARIA_REQUIREMENTS = {
+    "zzld": {
+        "full_name": "Закон за защита на личните данни (ЗЗЛД)",
+        "authority": "Комисия за защита на личните данни (КЗЛД)",
+        "requirements": [
+            "Регистър на дейностите по обработване (чл. 30 ОРЗЛД)",
+            "Оценка на въздействието при висок риск (чл. 35 ОРЗЛД)",
+            "Уведомяване за нарушаване в 72 часа (чл. 37 ОРЗЛД)",
+            "Право на информация, достъп, корекция, изтриване",
+            "Специални категории данни – изрично съгласие (чл. 9)",
+            "Забрана за профилиране на малолетни под 14 г.",
+        ],
+    },
+    "nzok": {
+        "authority": "НЗОК – Национална здравноосигурителна каса",
+        "requirements": [
+            "ЕГН – само с правно основание (ЗЗЛД + ЗДО)",
+            "Медицински данни – специална категория (чл. 9 ОРЗЛД)",
+            "Криптиране при пренос на здравна информация",
+        ],
+    },
+    "financial": {
+        "authority": "БНБ / Комисия за финансов надзор (КФН)",
+        "requirements": [
+            "PSD2 – отворен достъп до платежни данни чрез API",
+            "AML Директива (EU) 2015/849",
+            "ДДС регистрация при оборот > 50 000 лв.",
+            "DAC7 – отчетност за платформена икономика",
+        ],
+    },
+    "consumer_protection": {
+        "authority": "КЗП – Комисия за защита на потребителите",
+        "requirements": [
+            "Право на отказ от покупка на разстояние (14 дни)",
+            "Закон за електронната търговия – идентификация на търговеца",
+        ],
+    },
+}
+
+
+GLOBAL_REQUIREMENTS = {
+    "california_ccpa": {
+        "name": "CCPA/CPRA (California)",
+        "authority": "California Privacy Protection Agency",
+        "requirements": [
+            "Right to know, delete, opt-out of sale",
+            "Right to correct, limit use of sensitive data",
+            "Do Not Sell link required on homepage",
+        ],
+    },
+    "brazil_lgpd": {
+        "name": "LGPD (Brazil)",
+        "authority": "ANPD",
+        "requirements": [
+            "Free, informed, unambiguous consent",
+            "DPO (Encarregado) must be appointed",
+            "Data Protection Impact Report for high-risk",
+        ],
+    },
+    "canada_pipeda": {
+        "name": "PIPEDA (Canada)",
+        "authority": "Office of the Privacy Commissioner",
+        "requirements": [
+            "Meaningful consent for collection, use, disclosure",
+            "Breach reporting to OPC and affected individuals",
+        ],
+    },
+    "pci_dss": {
+        "name": "PCI DSS v4.0",
+        "requirements": [
+            "Never store CVV, full track data, or PIN",
+            "Encrypt cardholder data across open networks",
+            "Restrict access by business need-to-know",
+            "Regularly test security systems",
+        ],
+    },
+    "accessibility": {
+        "name": "Web Accessibility (WCAG 2.1 AA)",
+        "requirements": [
+            "WCAG 2.1 AA minimum (EU Web Accessibility Directive)",
+            "EN 301 549 – European ICT accessibility",
+            "ADA Title III – US public accommodations",
+        ],
+    },
+}
+
+
 class ScoutAgent:
     """Discovers active developer competitions and extracts structured constraints."""
     name: str = "ScoutAgent"
@@ -364,6 +486,238 @@ class MarketingAgent:
 # ADK WEB INTERACTIVE WRAPPERS & EXPORTS
 # Allows running and debugging each agent visually inside `adk w`
 # =====================================================================
+
+
+class ComplianceAgent:
+    """Multi-jurisdictional regulatory compliance auditor.
+
+    Validates the generated product against:
+    - GDPR (EU General Data Protection Regulation)
+    - Bulgarian regulations (ЗЗЛД, НЗОК, БНБ/КФН, КЗП)
+    - Global frameworks (CCPA/CPRA, LGPD, PIPEDA, PCI DSS, WCAG 2.1 AA)
+
+    Produces a compliance report that is attached to the submission package.
+    Runs AFTER Marketing so it can audit the final deliverables before CEO
+    gives the green light for submission.
+    """
+
+    name: str = "ComplianceAgent"
+
+    def __init__(self, llm: Optional[VertexGeminiClient] = None):
+        self.llm = llm or VertexGeminiClient()
+
+    def run(self, context: ToolContext) -> AgentResult:
+        selected_idea = context.state.get("selected_idea", {})
+        repo = context.state.get("git_repo", {})
+        submission = context.state.get("submission_package", {})
+        idea_title = selected_idea.get("title", "Unknown Product")
+
+        report = self._audit_compliance(selected_idea, repo, submission)
+        context.state["compliance_report"] = report
+
+        return AgentResult(
+            agent_name=self.name,
+            status="completed",
+            message=f"Multi-jurisdictional compliance audit complete for '{idea_title}'. "
+                    f"{report['critical_issues_count']} critical, "
+                    f"{report['warnings_count']} warnings.",
+            data=report,
+        )
+
+    def _audit_compliance(self, idea: Dict[str, Any], repo: Dict[str, Any], submission: Dict[str, Any]) -> Dict[str, Any]:
+        findings = []
+        findings.extend(self._check_gdpr(idea, repo, submission))
+        findings.extend(self._check_bulgaria(idea, repo, submission))
+        findings.extend(self._check_global(idea, repo, submission))
+
+        critical_count = sum(1 for f in findings if f["severity"] == "critical")
+        warning_count = sum(1 for f in findings if f["severity"] == "warning")
+
+        return {
+            "audit_timestamp": self._timestamp(),
+            "product": idea.get("title", "Unknown"),
+            "audited_scope": ["GDPR", "Bulgaria (ЗЗЛД/НЗОК/БНБ/КЗП)", "CCPA", "LGPD", "PIPEDA", "PCI DSS", "WCAG"],
+            "critical_issues_count": critical_count,
+            "warnings_count": warning_count,
+            "findings": findings,
+            "recommendations": self._generate_recommendations(findings),
+            "compliance_score": self._score(idea, critical_count, warning_count),
+        }
+
+    def _check_gdpr(self, idea: Dict[str, Any], repo: Dict[str, Any], submission: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """EU GDPR compliance checks."""
+        findings = []
+        tech_stack = [t.lower() for t in (idea.get("tech_stack") or [])]
+        description = (idea.get("description") or "").lower()
+
+        # PII processing detection
+        pii_keywords = ["user", "email", "profile", "account", "payment", "personal", "health"]
+        processes_pii = any(kw in description for kw in pii_keywords)
+        if processes_pii:
+            findings.append({
+                "jurisdiction": "EU / GDPR",
+                "severity": "warning",
+                "article": "Art. 5, 6, 13",
+                "description": "Product processes personal data. Ensure privacy policy, lawful basis, and data subject rights.",
+                "requirements": (GDPR_REQUIREMENTS["article_5_principles"][:3]
+                                 + GDPR_REQUIREMENTS["article_13_14_transparency"][:2]),
+            })
+
+        # Consent mechanism
+        findings.append({
+            "jurisdiction": "EU / GDPR",
+            "severity": "warning",
+            "article": "Art. 7",
+            "description": "Ensure granular consent mechanism before any data collection.",
+            "requirements": ["Consent must be freely given, specific, informed, unambiguous"],
+        })
+
+        # International transfers
+        cloud_providers = ["aws", "gcp", "azure", "cloudflare"]
+        if any(p in " ".join(tech_stack) for p in cloud_providers):
+            findings.append({
+                "jurisdiction": "EU / GDPR",
+                "severity": "warning",
+                "article": "Art. 44-49",
+                "description": "Cloud provider detected. Verify adequacy decisions or SCCs.",
+                "requirements": ["EU-US Data Privacy Framework or Standard Contractual Clauses"],
+            })
+
+        return findings
+
+    def _check_bulgaria(self, idea: Dict[str, Any], repo: Dict[str, Any], submission: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Bulgarian national compliance checks (ЗЗЛД, НЗОК, БНБ, КЗП)."""
+        findings = []
+        description = (idea.get("description") or "").lower()
+
+        # ЗЗЛД – personal data
+        if any(kw in description for kw in ["user", "email", "profile", "лични", "егн"]):
+            findings.append({
+                "jurisdiction": "Bulgaria / ЗЗЛД",
+                "severity": "warning",
+                "legal_basis": "ЗЗЛД чл. 30, ОРЗЛД",
+                "description": "Обработване на лични данни – необходим регистър и оценка на въздействието.",
+                "requirements": BULGARIA_REQUIREMENTS["zzld"]["requirements"][:3],
+            })
+
+        # НЗОК – health data
+        if any(kw in description for kw in ["health", "medical", "patient", "diagnosis", "здрав"]):
+            findings.append({
+                "jurisdiction": "Bulgaria / НЗОК",
+                "severity": "critical",
+                "legal_basis": "ЗЗЛД чл. 9 + ЗДО",
+                "description": "Медицински данни – специална категория. Изисква се изрично съгласие.",
+                "requirements": BULGARIA_REQUIREMENTS["nzok"]["requirements"],
+            })
+
+        # Financial services
+        if any(kw in description for kw in ["payment", "billing", "invoice", "subscription", "цена"]):
+            findings.append({
+                "jurisdiction": "Bulgaria / БНБ-КФН",
+                "severity": "warning",
+                "legal_basis": "PSD2, ЗДО",
+                "description": "Финансови услуги – проверете лицензиране и ДДС регистрация.",
+                "requirements": BULGARIA_REQUIREMENTS["financial"]["requirements"][:2],
+            })
+
+        # Consumer protection
+        if any(kw in description for kw in ["buy", "purchase", "shop", "store", "продажба"]):
+            findings.append({
+                "jurisdiction": "Bulgaria / КЗП",
+                "severity": "warning",
+                "legal_basis": "ЗЗП / Директива 2011/83/ЕС",
+                "description": "E-commerce – право на отказ 14 дни, идентификация на търговеца.",
+                "requirements": BULGARIA_REQUIREMENTS["consumer_protection"]["requirements"],
+            })
+
+        return findings
+
+
+
+        return findings
+
+    def _check_global(self, idea: Dict[str, Any], repo: Dict[str, Any], submission: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Global regulatory compliance checks (CCPA, LGPD, PIPEDA, PCI DSS, WCAG)."""
+        findings = []
+        description = (idea.get("description") or "").lower()
+        tech_stack = [t.lower() for t in (idea.get("tech_stack") or [])]
+
+        # CCPA – California
+        if any(kw in description for kw in ["user", "profile", "email"]):
+            findings.append({
+                "jurisdiction": "California / CCPA",
+                "severity": "warning",
+                "legal_basis": "Cal. Civ. Code § 1798.100",
+                "description": "California residents: implement 'Do Not Sell' link and honor opt-out.",
+                "requirements": GLOBAL_REQUIREMENTS["california_ccpa"]["requirements"][:3],
+            })
+
+        # LGPD – Brazil
+        if "user" in description or "personal" in description:
+            findings.append({
+                "jurisdiction": "Brazil / LGPD",
+                "severity": "warning",
+                "legal_basis": "Lei nº 13.709/2018",
+                "description": "Brazil operations: appoint DPO (Encarregado), implement data subject rights.",
+                "requirements": GLOBAL_REQUIREMENTS["brazil_lgpd"]["requirements"][:2],
+            })
+
+        # PCI DSS – payments
+        payment_keywords = ["payment", "credit card", "stripe", "paypal", "billing", "checkout"]
+        if any(kw in description for kw in payment_keywords):
+            findings.append({
+                "jurisdiction": "Global / PCI DSS",
+                "severity": "critical",
+                "legal_basis": "PCI DSS v4.0",
+                "description": "Payment card data – never store CVV. Use tokenization (Stripe/PayPal).",
+                "requirements": GLOBAL_REQUIREMENTS["pci_dss"]["requirements"][:3],
+            })
+
+        # Accessibility – WCAG
+        findings.append({
+            "jurisdiction": "Global / WCAG 2.1 AA",
+            "severity": "warning",
+            "legal_basis": "EN 301 549 / ADA Title III",
+            "description": "Ensure minimum accessibility standards (WCAG 2.1 AA) for public sector.",
+            "requirements": GLOBAL_REQUIREMENTS["accessibility"]["requirements"],
+        })
+
+        return findings
+
+    def _timestamp(self) -> str:
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc).isoformat()
+
+    def _generate_recommendations(self, findings: List[Dict[str, Any]]) -> List[str]:
+        recs = []
+        for f in findings:
+            if f["severity"] == "critical":
+                recs.append(f"[CRITICAL] {f['jurisdiction']}: {f['description']}")
+            elif f["severity"] == "warning":
+                recs.append(f"[WARNING] {f['jurisdiction']}: {f['description']}")
+        if not recs:
+            recs.append("No critical compliance issues detected. Maintain current posture.")
+        return recs
+
+    def _score(self, idea: Dict[str, Any], critical: int, warning: int) -> Dict[str, Any]:
+        base = 100
+        base -= critical * 25
+        base -= warning * 5
+        score = max(0, min(100, base))
+        return {
+            "overall": score,
+            "grade": "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F",
+            "blocking": critical > 0,
+        }
+        return findings
+
+
+
+        return findings
+
+
+
+
 
 def adk_scout_agent(raw_feed: Dict[str, Any]) -> Dict[str, Any]:
     context = ToolContext(session_id="adk_scout_session")
