@@ -78,6 +78,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic> _ideaA = {};
   Map<String, dynamic> _ideaB = {};
 
+  /// Safely converts a dynamic value (from JSON) to Map<String, dynamic>.
+  /// Returns an empty map for null or non-Map values, preventing runtime
+  /// type-check failures in release builds.
+  Map<String, dynamic> _safeMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const {};
+  }
+
   // Enterprise governance sections (sessions / memory / security / system).
   String _activeSection = 'fleet';
   bool _sectionLoading = false;
@@ -252,8 +261,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final hackathons = (result['hackathons'] as List? ?? const [])
           .whereType<Map<String, dynamic>>()
           .toList();
-      final opportunity =
-          (result['opportunity'] as Map<String, dynamic>? ?? const {});
+      final opportunity = _safeMap(result['opportunity']);
       final data = result['data'];
       // Store session_id from backend response for subsequent calls
       final newSessionId = result['session_id'] as String?;
@@ -263,8 +271,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _hackathons = hackathons;
         _activeOpportunity = opportunity;
         if (data is Map<String, dynamic>) {
-          _ideaA = (data['idea_a'] as Map<String, dynamic>? ?? const {});
-          _ideaB = (data['idea_b'] as Map<String, dynamic>? ?? const {});
+          _ideaA = _safeMap(data['idea_a']);
+          _ideaB = _safeMap(data['idea_b']);
         }
         // Store session_id from backend to use in CEO decision calls
         if (newSessionId != null && newSessionId.isNotEmpty) {
@@ -324,8 +332,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _isLoading = false;
         _sessionId = newSessionId;
-        _ideaA = (result['idea_a'] as Map<String, dynamic>? ?? const {});
-        _ideaB = (result['idea_b'] as Map<String, dynamic>? ?? const {});
+        _ideaA = _safeMap(result['idea_a']);
+        _ideaB = _safeMap(result['idea_b']);
         _activeOpportunity = hackathon;
         _statusText = 'Proposals ready for "${hackathon['title']}"';
       });
