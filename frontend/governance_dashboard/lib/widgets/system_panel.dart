@@ -19,9 +19,7 @@ class SystemPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final agents = (systemData['agents'] as List<dynamic>? ?? [])
-        .map((a) => a.toString())
-        .toList();
+    final agents = govSafeStringList(systemData['agents']);
 
     return govLoadingOr(
       sectionLoading,
@@ -106,8 +104,7 @@ class SystemPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 govKV('HITL Gates',
-                    ((systemData['hitl_gates'] as List<dynamic>? ?? [])
-                        .join('  •  '))),
+                    govSafeStringList(systemData['hitl_gates']).join('  •  ')),
               ],
             ),
           ],

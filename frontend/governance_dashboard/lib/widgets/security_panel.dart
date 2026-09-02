@@ -15,13 +15,8 @@ class SecurityPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tenants = (securityData['tenants_observed'] as List<dynamic>? ?? [])
-        .map((t) => t.toString())
-        .toList();
-    final gates =
-        (securityData['human_in_the_loop_gates'] as List<dynamic>? ?? [])
-            .map((g) => g.toString())
-            .toList();
+    final tenants = govSafeStringList(securityData['tenants_observed']);
+    final gates = govSafeStringList(securityData['human_in_the_loop_gates']);
 
     return govLoadingOr(
       sectionLoading,
@@ -50,8 +45,7 @@ class SecurityPanel extends StatelessWidget {
                 govKV('Skip Safety',
                     (securityData['skip_safety'] ?? '—').toString()),
                 govKV('Git Providers',
-                    ((securityData['git_providers'] as List<dynamic>? ?? [])
-                        .join(', '))),
+                    govSafeStringList(securityData['git_providers']).join(', ')),
                 govKV('Session Records',
                     (securityData['session_records'] ?? 0).toString()),
                 govKV('Memory Records',

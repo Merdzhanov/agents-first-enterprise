@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'gov_helpers.dart';
+
 /// Live board of all discovered hackathons. Every row deep-links to
 /// the competition page, opened in a new browser tab.
 /// Supports single-selection — only one hackathon can be selected at a time.
@@ -99,10 +101,7 @@ class HackathonBoard extends StatelessWidget {
     final deadline = (hackathon['submission_deadline'] ?? 'TBA').toString();
     final organization = (hackathon['organization_name'] ?? '').toString();
     final registrations = (hackathon['registrations_count'] ?? 0).toString();
-    final themes = (hackathon['themes'] as List? ?? [])
-        .map((t) => (t as Map? ?? {})['name']?.toString() ?? '')
-        .where((n) => n.isNotEmpty)
-        .toList();
+    final themes = govThemeNames(hackathon['themes']);
     final isSelected = selectedHackathonId == id;
 
     return Container(

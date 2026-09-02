@@ -15,8 +15,9 @@ class SessionsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sessions = (sessionsData['sessions'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
+    final sessions = govSafeList(sessionsData['sessions'])
+        .whereType<Map>()
+        .map((s) => govSafeMap(s))
         .toList();
     final count = (sessionsData['count'] ?? sessions.length).toString();
 

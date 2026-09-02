@@ -16,6 +16,7 @@ import 'widgets/sessions_panel.dart';
 import 'widgets/memory_panel.dart';
 import 'widgets/security_panel.dart';
 import 'widgets/system_panel.dart';
+import 'widgets/gov_helpers.dart';
 
 void main() {
   runApp(const AgentEnterpriseApp());
@@ -258,13 +259,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         sessionId: _sessionId.isEmpty ? 'session_governance_001' : _sessionId,
       );
       final message = result['message'] ?? 'Vertex AI synthesized 2 proposals.';
-      final hackathons = (result['hackathons'] as List? ?? const [])
-          .whereType<Map<String, dynamic>>()
+      final hackathons = govSafeList(result['hackathons'])
+          .whereType<Map>()
+          .map((h) => _safeMap(h))
           .toList();
       final opportunity = _safeMap(result['opportunity']);
       final data = result['data'];
       // Store session_id from backend response for subsequent calls
-      final newSessionId = result['session_id'] as String?;
+      final newSessionId = result['session_id']?.toString();
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -503,7 +505,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         gitProvider: _selectedProvider.toLowerCase(),
       );
       if (!mounted) return;
-      final newSession = result['session_id'] as String?;
+      final newSession = result['session_id']?.toString();
       setState(() {
         _isSubmittingIdea = false;
         if (newSession != null && newSession.isNotEmpty) {
@@ -531,7 +533,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final result = await _api.triggerScheduledDiscovery();
       if (!mounted) return;
-      final count = result['proposals_count'] as int? ?? 0;
+      final count = govSafeInt(result['proposals_count']);
       setState(() => _isRunningScheduledDiscovery = false);
       _addLog(
           'Scheduler: Cycle complete — $count new proposal(s) synthesized for CEO review.',

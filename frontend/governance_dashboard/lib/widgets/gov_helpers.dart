@@ -153,3 +153,61 @@ InputDecoration govInputDecoration(String hint) {
     isDense: true,
   );
 }
+
+// ---------------------------------------------------------------------------
+// WASM-safe JSON coercion helpers.
+// dart2wasm enforces `as` casts strictly at runtime. JSON-decoded values may
+// arrive as Map<Object?, Object?> or List<Object?> variants that fail direct
+// casts to Map<String, dynamic> / List<dynamic>. These helpers tolerate all
+// shapes without throwing.
+// ---------------------------------------------------------------------------
+
+/// Safely coerces [value] to a `Map<String, dynamic>` without throwing.
+Map<String, dynamic> govSafeMap(dynamic value) {
+  if (value == null) return {};
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return value.map((k, v) => MapEntry(k.toString(), v));
+  }
+  return {};
+}
+
+/// Safely coerces [value] to a `List<dynamic>` without throwing.
+List<dynamic> govSafeList(dynamic value) {
+  if (value == null) return const [];
+  if (value is List) return value;
+  return const [];
+}
+
+/// Safely coerces [value] to a `List<String>` without throwing.
+List<String> govSafeStringList(dynamic value) {
+  final list = govSafeList(value);
+  return list
+      .map((e) => e?.toString() ?? '')
+      .where((s) => s.isNotEmpty)
+      .toList();
+}
+
+/// Extracts theme display names from a themes field that may be a list of
+/// maps (each with a 'name' key) or a plain list of strings.
+List<String> govThemeNames(dynamic themes) {
+  final list = govSafeList(themes);
+  final names = <String>[];
+  for (final t in list) {
+    if (t is Map) {
+      final name = (t['name'] ?? '').toString();
+      if (name.isNotEmpty) names.add(name);
+    } else if (t != null) {
+      final name = t.toString();
+      if (name.isNotEmpty) names.add(name);
+    }
+  }
+  return names;
+}
+
+/// Safely coerces [value] to an int without throwing.
+int govSafeInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}

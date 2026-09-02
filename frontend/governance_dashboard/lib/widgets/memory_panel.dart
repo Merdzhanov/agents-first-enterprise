@@ -21,8 +21,9 @@ class MemoryPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final memories = (memoryData['memories'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
+    final memories = govSafeList(memoryData['memories'])
+        .whereType<Map>()
+        .map((m) => govSafeMap(m))
         .toList();
     final count = (memoryData['count'] ?? memories.length).toString();
     final tenant = (memoryData['tenant_id'] ?? 'default_enterprise').toString();

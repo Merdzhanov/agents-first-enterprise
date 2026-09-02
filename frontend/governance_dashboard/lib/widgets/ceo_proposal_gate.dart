@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'concept_card.dart';
+import 'gov_helpers.dart';
 
 /// CEO Proposal Gate — presents Concept A / Concept B for approval.
 /// Shows the selected hackathon context for aligned proposal generation.
@@ -25,8 +26,7 @@ class CeoProposalGate extends StatelessWidget {
   final ValueChanged<String> onLaunchUrl;
   final Map<String, dynamic>? selectedHackathon;
 
-  List<String> _stringList(dynamic value) =>
-      (value as List? ?? const []).map((e) => e.toString()).toList();
+  List<String> _stringList(dynamic value) => govSafeStringList(value);
 
   @override
   Widget build(BuildContext context) {
@@ -115,10 +115,7 @@ class CeoProposalGate extends StatelessWidget {
     final url = (selectedHackathon!['url'] ?? '').toString();
     final prize = selectedHackathon!['prize_pool'];
     final deadline = (selectedHackathon!['submission_deadline'] ?? '').toString();
-    final themes = (selectedHackathon!['themes'] as List? ?? [])
-        .map((t) => (t as Map? ?? {})['name']?.toString() ?? '')
-        .where((n) => n.isNotEmpty)
-        .toList();
+    final themes = govThemeNames(selectedHackathon!['themes']);
 
     return Container(
       padding: const EdgeInsets.all(12),

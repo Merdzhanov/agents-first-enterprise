@@ -392,6 +392,22 @@ def generate_proposals(req: GenerateProposalsRequest) -> Dict[str, Any]:
             idea_a = idea_a or nested.get("idea_a")
             idea_b = idea_b or nested.get("idea_b")
 
+        # Persist the session so it appears in /fleet/sessions and the
+        # governance dashboard history. Without this the ADK run is
+        # ephemeral and the session disappears on refresh.
+        SESSION_DB.save_session(
+            session_id=req.session_id,
+            status="awaiting_ceo_decision",
+            current_agent="PlannerAgent",
+            state=state,
+        )
+        SESSION_DB.append_trace(
+            req.session_id,
+            "PlannerAgent",
+            "proposals",
+            f"Generated 2 proposals for '{req.hackathon.get('title', 'selected hackathon')}' via ADK Runner.",
+        )
+
         return {
             "session_id": req.session_id,
             "status": "awaiting_ceo_decision",
