@@ -30,6 +30,7 @@ from app.main import SCHEDULER, app
 from app.schemas import (
     ArchitectureComponent,
     ArchitectureSpec,
+    CodeReview,
     DualProposalResponse,
     GeneratedFile,
     IdeaProposal,
@@ -59,10 +60,15 @@ def _fake_dart(endpoint_path: str, payload: Any = None, *args: Any, **kwargs: An
     if endpoint_path == "tasks/provision-repo":
         p = payload or {}
         repo_name = p.get("repo_name", "prototype-repo")
+        web_url = f"https://github.com/mock-org/{repo_name}"
+        # Contract mirrors services/dart_node github_service.dart: the gate in
+        # PlannerAgent.process_ceo_decision requires status='provisioned' AND a
+        # web_url — provisioning must never be faked past the validation gate.
         return {
-            "status": "created",
+            "status": "provisioned",
             "repo_name": repo_name,
-            "repo_url": f"https://github.com/mock-org/{repo_name}",
+            "web_url": web_url,
+            "repo_url": web_url,  # legacy alias kept for dashboard payloads
             "provider": p.get("provider", "github"),
         }
     if endpoint_path == "tasks/commit-files":
@@ -111,14 +117,16 @@ def llm_calls(monkeypatch: pytest.MonkeyPatch) -> Dict[str, int]:
     """Patches the shared VertexGeminiClient singleton (used by main.py,
     fleet_workflow.py and every agent) with deterministic Pydantic responses
     and counts every LLM invocation so tests can assert zero-spend paths."""
-    calls = {"proposals": 0, "architecture": 0, "source_file": 0, "submission": 0}
+    calls = {"proposals": 0, "architecture": 0, "source_file": 0, "submission": 0, "code_review": 0}
     llm = fw.LLM_CLIENT
 
     def fake_proposals(opportunity: Dict[str, Any], memory_context: Any = None) -> DualProposalResponse:
         calls["proposals"] += 1
         return _mock_proposals()
 
-    def fake_architecture(idea: Dict[str, Any], git_provider: str = "GITHUB") -> ArchitectureSpec:
+    def fake_architecture(
+        idea: Dict[str, Any], git_provider: str = "GITHUB", revision_feedback: str = ""
+    ) -> ArchitectureSpec:
         calls["architecture"] += 1
         return ArchitectureSpec(
             # Mirrors the real VertexGeminiClient.generate_architecture contract
@@ -159,10 +167,26 @@ def llm_calls(monkeypatch: pytest.MonkeyPatch) -> Dict[str, int]:
             learnings="Workflow interrupts map cleanly onto HITL gates.",
         )
 
+    def fake_code_review(
+        idea: Dict[str, Any],
+        architecture: Any,
+        files: List[Dict[str, Any]],
+        hackathon_rules: str,
+        previous_feedback: str = "",
+    ) -> CodeReview:
+        calls["code_review"] += 1
+        return CodeReview(
+            verdict="approve",
+            summary="Mock review: implementation matches the architecture contract.",
+            findings=[],
+            rework_feedback="",
+        )
+
     monkeypatch.setattr(llm, "generate_proposals", fake_proposals)
     monkeypatch.setattr(llm, "generate_architecture", fake_architecture)
     monkeypatch.setattr(llm, "generate_source_file", fake_source_file)
     monkeypatch.setattr(llm, "generate_submission", fake_submission)
+    monkeypatch.setattr(llm, "generate_code_review", fake_code_review)
     return calls
 
 
@@ -217,7 +241,8 @@ def test_full_hitl_flow_approve_idea_a(
     assert sess["state"]["idea_a"]["title"].startswith("EphemeraFlow")
     assert llm_calls["proposals"] == 1
 
-    # --- Phase 2: CEO decision resumes the REAL ADK Runner to completion ---
+    # --- Phase 2: CEO decision resumes the REAL ADK Runner ---
+    # Multi-gate HITL: proposal → architecture review → code review.
     res = client.post(
         "/fleet/ceo-decision",
         json={"session_id": sid, "decision_choice": "approve_idea_a"},
@@ -225,20 +250,49 @@ def test_full_hitl_flow_approve_idea_a(
     assert res.status_code == 200, res.text
     assert res.json()["status"] == "processing_in_background"
 
-    # TestClient executes background tasks synchronously -> pipeline finished
+    # TestClient executes background tasks synchronously -> the workflow ran
+    # until it paused at the NEXT human gate: the Architecture Review Gate.
+    sess = client.get(f"/fleet/session/{sid}").json()
+    assert sess["status"] == "awaiting_gate_decision", sess
+    pending = sess["state"]["pending_request_input"]
+    assert pending["interrupt_id"] == fw.CEO_ARCH_REVIEW_GATE
+    assert sess["state"]["architecture_spec"]["title"].startswith("Cloud Native Architecture")
+    # Provisioning happened at the decision gate under the real contract.
+    assert "mock-org" in sess["state"]["git_repo"]["web_url"]
+    assert sess["state"]["selected_idea"]["repo_name"] == "ephemeraflow-governed-fleet"
+
+    # CEO approves the architecture -> LeadDev scaffolds + Reviewer reviews,
+    # then the workflow pauses at the CEO Code Review Gate.
+    res = client.post(
+        "/fleet/ceo-decision",
+        json={"session_id": sid, "decision_choice": "approve_architecture"},
+    )
+    assert res.status_code == 200, res.text
+    sess = client.get(f"/fleet/session/{sid}").json()
+    assert sess["status"] == "awaiting_gate_decision", sess
+    pending = sess["state"]["pending_request_input"]
+    assert pending["interrupt_id"] == fw.CEO_CODE_REVIEW_GATE
+    assert sess["state"]["code_review"]["verdict"] == "approve"
+    assert sess["state"]["committed_files"], "LeadDev must commit the scaffolded files"
+
+    # CEO approves the reviewed code -> compliance gate -> marketing -> done.
+    res = client.post(
+        "/fleet/ceo-decision",
+        json={"session_id": sid, "decision_choice": "approve_code"},
+    )
+    assert res.status_code == 200, res.text
     sess = client.get(f"/fleet/session/{sid}").json()
     assert sess["status"] == "completed", sess
     state = sess["state"]
     assert state["ceo_decision_choice"] == "approve_idea_a"
-    assert state["selected_idea"]["repo_name"] == "ephemeraflow-governed-fleet"
-    assert "mock-org" in state["git_repo"]["repo_url"]
     assert state["architecture_spec"]["title"].startswith("Cloud Native Architecture")
-    assert state["committed_files"], "LeadDev must commit the scaffolded files"
     assert state["submission_package"]["tagline"]
 
-    # Exactly one deterministic call per LLM stage -> zero wasted spend
+    # Exactly one deterministic call per LLM stage -> zero wasted spend.
+    # The independent ReviewerAgent ran exactly once (verdict: approve).
     assert llm_calls["proposals"] == 1
     assert llm_calls["architecture"] == 1
+    assert llm_calls["code_review"] == 1
     assert llm_calls["submission"] == 1
     assert llm_calls["source_file"] >= 1
 
@@ -251,7 +305,7 @@ def test_full_hitl_flow_approve_idea_a(
     assert arts.status_code == 200, arts.text
     arts = arts.json()
     assert arts["status"] == "completed"
-    assert "mock-org" in arts["git_repo"]["repo_url"]
+    assert "mock-org" in arts["git_repo"]["web_url"]
     assert arts["architecture_spec"]["title"].startswith("Cloud Native Architecture")
     assert arts["committed_files"]
     assert arts["submission_package"]["tagline"]
@@ -395,7 +449,9 @@ def test_ceo_idea_rejects_empty_prompt(client: TestClient) -> None:
     assert res.status_code == 422
 
 
-def test_ceo_idea_conflict_on_duplicate_session(client: TestClient) -> None:
+def test_ceo_idea_conflict_on_duplicate_session(
+    client: TestClient, mock_dart: None, llm_calls: Dict[str, int]
+) -> None:
     payload = {"custom_prompt": "Duplicate session test", "session_id": "dup_ceo_session"}
     assert client.post("/fleet/ceo-idea", json=payload).status_code == 200
     assert client.post("/fleet/ceo-idea", json=payload).status_code == 409
@@ -404,7 +460,9 @@ def test_ceo_idea_conflict_on_duplicate_session(client: TestClient) -> None:
 # ---------------------------------------------------------------------
 # 7. Governance surfaces: sessions registry, memory bank, security, system
 # ---------------------------------------------------------------------
-def test_sessions_registry_lists_created_sessions(client: TestClient) -> None:
+def test_sessions_registry_lists_created_sessions(
+    client: TestClient, mock_dart: None, llm_calls: Dict[str, int]
+) -> None:
     client.post("/fleet/discovery", json={"session_id": "gov_sess_1", "raw_feed": {}})
     res = client.get("/fleet/sessions?limit=50&include_state=true")
     assert res.status_code == 200
@@ -446,7 +504,7 @@ def test_security_posture_reports_controls(client: TestClient) -> None:
     body = res.json()
     assert "OIDC" in body["service_to_service_auth"]
     assert "RLS" in body["session_isolation"]
-    assert len(body["human_in_the_loop_gates"]) == 2
+    assert len(body["human_in_the_loop_gates"]) == 3
     assert isinstance(body["tenants_observed"], list)
     assert body["cors_policy"].startswith("allow_origins")
 

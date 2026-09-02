@@ -74,6 +74,35 @@ class SubmissionPackage(BaseModel):
     learnings: str = Field(description="Key findings, engineering takeaways, and scalability observations")
 
 
+class CodeReviewFinding(BaseModel):
+    """A single concrete issue found during code review."""
+    severity: Literal["critical", "warning", "info"] = Field(
+        description="critical = must fix before merge, warning = should fix, info = suggestion"
+    )
+    file: str = Field(description="Relative file path the finding applies to (or 'general')")
+    issue: str = Field(description="Clear, concise description of the problem")
+    suggestion: str = Field(description="Actionable fix the Lead Dev should apply")
+
+
+class CodeReview(BaseModel):
+    """Schema for the Reviewer Agent verdict on generated code.
+
+    The reviewer is an INDEPENDENT critic: it checks the implementation
+    against (1) the Architect's topology, (2) the hackathon rules/requirements,
+    and (3) basic correctness/quality. It never lobbies for its own creation —
+    it collaborates with the Lead Dev by sending findings back for rework.
+    """
+    verdict: Literal["approve", "needs_work"] = Field(
+        description="approve only when all critical and warning findings are resolved"
+    )
+    summary: str = Field(description="1-3 sentence overall assessment")
+    findings: List[CodeReviewFinding] = Field(default_factory=list)
+    rework_feedback: str = Field(
+        description="Direct, actionable instruction block for the Lead Dev Agent "
+                    "— what to change and where. Empty when verdict is 'approve'."
+    )
+
+
 # =====================================================================
 # ADK ALIASES & SCHEMA REGISTRY (ADK Integration Optimization)
 # =====================================================================
@@ -85,6 +114,8 @@ AdkArchitectureSpec = ArchitectureSpec
 AdkFileRequest = FileRequest
 AdkGeneratedFile = GeneratedFile
 AdkSubmissionPackage = SubmissionPackage
+AdkCodeReview = CodeReview
+AdkCodeReviewFinding = CodeReviewFinding
 
 
 class AdkSchemaRegistry:

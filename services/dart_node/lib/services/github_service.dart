@@ -26,19 +26,17 @@ class GitHubService {
         .replaceAll(RegExp(r'[^a-z0-9_-]'), '-')
         .replaceAll(RegExp(r'-+'), '-');
 
-    // If no token is provided in dev/offline mode, run in mock-deterministic mode
+    // No token → hard failure (no mock). The pipeline must fail loudly so the
+    // CEO dashboard never shows a fake repo. Configure GITHUB_TOKEN on the
+    // dart-node Cloud Run service to provision real repositories.
     if (privateToken == null || privateToken!.isEmpty) {
       return {
-        'status': 'provisioned_mock',
+        'status': 'error',
         'provider': 'github',
-        'owner': 'agents-first-enterprise',
-        'repo_name': sanitizedName,
-        'web_url': 'https://github.com/agents-first-enterprise/$sanitizedName',
-        'project_id': 20000000 + sanitizedName.hashCode.abs() % 80000000,
-        'license': license,
-        'visibility': isPublic ? 'public' : 'private',
-        'files_committed': ['README.md', 'LICENSE', '.gitignore'],
-        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'error_type': 'GitHubTokenNotConfigured',
+        'message': 'GITHUB_TOKEN is not configured on the Dart Node service. '
+            'Set GITHUB_TOKEN so the fleet can provision real repositories — '
+            'mock provisioning is no longer allowed.',
       };
     }
 
@@ -61,8 +59,8 @@ class GitHubService {
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final String htmlUrl = data['html_url'] ?? 'https://github.com/agents-first-enterprise/$sanitizedName';
-        final String owner = data['owner']?['login'] ?? 'agents-first-enterprise';
+        final String htmlUrl = data['html_url'] ?? 'https://github.com/Merdzhanov/$sanitizedName';
+        final String owner = data['owner']?['login'] ?? 'Merdzhanov';
         final int repoId = data['id'] ?? (20000000 + sanitizedName.hashCode.abs() % 80000000);
 
         // Upload custom README.md
@@ -94,7 +92,7 @@ class GitHubService {
         'provider': 'github',
         'error_type': 'GitHubProvisioningFailed',
         'message': e.toString(),
-        'fallback_url': 'https://github.com/agents-first-enterprise/$sanitizedName',
+        'fallback_url': 'https://github.com/Merdzhanov/$sanitizedName',
       };
     }
   }
@@ -106,13 +104,12 @@ class GitHubService {
     required List<Map<String, dynamic>> files,
   }) async {
     if (privateToken == null || privateToken!.isEmpty) {
-      final fileNames = files.map((f) => f['path']?.toString() ?? 'file').toList();
       return {
-        'status': 'committed_mock',
+        'status': 'error',
         'provider': 'github',
-        'repo_name': repoName,
-        'committed_files': fileNames,
-        'commit_sha': 'mock_sha_${DateTime.now().millisecondsSinceEpoch}',
+        'error_type': 'GitHubTokenNotConfigured',
+        'message': 'GITHUB_TOKEN is not configured on the Dart Node service. '
+            'Refusing to fake a commit — set GITHUB_TOKEN to push real files.',
       };
     }
 
@@ -148,7 +145,9 @@ class GitHubService {
     required String content,
     required String commitMsg,
   }) async {
-    if (privateToken == null || privateToken!.isEmpty) return;
+    if (privateToken == null || privateToken!.isEmpty) {
+      throw StateError('GITHUB_TOKEN not configured — cannot commit file $filePath.');
+    }
 
     final url = '$githubApiUrl/repos/$owner/$repoName/contents/$filePath';
     final base64Content = base64Encode(utf8.encode(content));

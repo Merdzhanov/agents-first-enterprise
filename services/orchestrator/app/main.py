@@ -4,10 +4,21 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import urllib.error
 from typing import Any, Dict, List, Literal, Optional
 
 # Strict CEO decision contract — invalid values are rejected by pydantic (HTTP 422).
-DecisionChoice = Literal["approve_idea_a", "approve_idea_b", "custom_idea", "skip_implementation"]
+DecisionChoice = Literal[
+    "approve_idea_a",
+    "approve_idea_b",
+    "custom_idea",
+    "skip_implementation",
+    # Multi-gate HITL decisions:
+    "approve_architecture",
+    "revise_architecture",
+    "approve_code",
+    "request_changes",
+]
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -26,6 +37,8 @@ from .agents import (
 )
 from .deployer import DeploymentAgent
 from .fleet_workflow import (
+    CEO_ARCH_REVIEW_GATE,
+    CEO_CODE_REVIEW_GATE,
     CEO_DECISION_GATE,
     FLEET_RUNNER,
     LLM_CLIENT,
@@ -37,6 +50,10 @@ from .fleet_workflow import (
 )
 from .scheduler import DiscoveryScheduler
 from .tools import ToolContext
+
+# ADK workflow error for node failures — imported separately to avoid
+# pulling the entire ADK workflow package at module load time.
+from google.adk.workflow._errors import DynamicNodeFailError
 
 app = FastAPI(
     title="Agent-First Enterprise Orchestration Fleet (Dual Mode)",
@@ -65,15 +82,22 @@ class TriggerDiscoveryRequest(BaseModel):
 
 class CeoDecisionRequest(BaseModel):
     session_id: str
-    decision_choice: DecisionChoice = Field(description="approve_idea_a | approve_idea_b | custom_idea | skip_implementation")
+    decision_choice: DecisionChoice = Field(description="CEO decision at the current HITL gate")
     custom_prompt: Optional[str] = None
     git_provider: str = Field(default="github", description="github | gitlab")
     custom_repo_name: Optional[str] = Field(default=None, description="Custom or confirmed repository name")
+    feedback: Optional[str] = Field(default=None, description="Free-text feedback for revise_architecture / request_changes / custom_idea")
     use_adk_runner: bool = Field(default=True, description="Toggle between ADK Runner (default) and manual execution")
 
 class DeployConfirmRequest(BaseModel):
     session_id: str
     decision: str = Field(default="confirm_deploy_cloud_run", description="confirm_deploy_cloud_run | cancel_deployment")
+
+
+class GenerateProposalsRequest(BaseModel):
+    """Generate proposals for a specific hackathon (already discovered, no Devpost API call)."""
+    session_id: str = Field(default="session_dev_001")
+    hackathon: Dict[str, Any] = Field(..., description="Selected hackathon data (title, url, prize_pool, tracks, etc.)")
 
 
 class CeoIdeaRequest(BaseModel):
@@ -111,9 +135,43 @@ def trigger_discovery(req: TriggerDiscoveryRequest) -> Dict[str, Any]:
     if req.use_adk_runner:
         # Sync endpoints run in FastAPI's threadpool, so asyncio.run() here is
         # safe (no running event loop in this worker thread).
-        state, pending = asyncio.run(
-            start_fleet_run(session_id=req.session_id, raw_feed=req.raw_feed)
-        )
+        try:
+            state, pending = asyncio.run(
+                start_fleet_run(session_id=req.session_id, raw_feed=req.raw_feed)
+            )
+        except DynamicNodeFailError as e:
+            # ADK workflow node failed — extract the original error for the message
+            original = e.error
+            import traceback
+            print(f"ERROR in /fleet/discovery - Workflow node '{e.error_node_path}' failed: {original}")
+            traceback.print_exception(type(original), original, original.__traceback__)
+            if isinstance(original, urllib.error.HTTPError):
+                # HTTPError must be checked BEFORE URLError (it is a subclass)
+                raise HTTPException(status_code=502, detail=f"Dart Node HTTP {original.code} at '{e.error_node_path}': {original}")
+            elif isinstance(original, urllib.error.URLError):
+                raise HTTPException(status_code=502, detail=f"Dart Node unreachable at '{e.error_node_path}': {original}")
+            elif isinstance(original, RuntimeError):
+                raise HTTPException(status_code=500, detail=f"OIDC/LLM error at '{e.error_node_path}': {original}")
+            else:
+                raise HTTPException(status_code=500, detail=f"Workflow node '{e.error_node_path}' failed: {original}")
+        except urllib.error.HTTPError as e:
+            # HTTPError must precede URLError — it is a subclass (non-ADK path)
+            print(f"ERROR in /fleet/discovery - Dart Node HTTP {e.code}: {e.reason}")
+            raise HTTPException(status_code=502, detail=f"Dart Node returned HTTP {e.code}: {e.reason}")
+        except urllib.error.URLError as e:
+            # Dart Node service unreachable (non-ADK path)
+            print(f"ERROR in /fleet/discovery - Dart Node unreachable: {e}")
+            raise HTTPException(status_code=502, detail=f"Dart Node service unreachable: {e}")
+        except RuntimeError as e:
+            # OIDC token fetch failure or LLM client failure (non-ADK path)
+            print(f"ERROR in /fleet/discovery - Runtime error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            # Unexpected error
+            import traceback
+            print(f"ERROR in /fleet/discovery - Unexpected error: {e}")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
         if pending is not None:
             # Mirror the ADK session state into the Cloud SQL-shaped session
             # store so dashboard telemetry (/fleet/session/{id}) stays live.
@@ -204,6 +262,7 @@ def background_runner_resume(
     custom_prompt: Optional[str],
     git_provider: str = "github",
     custom_repo_name: Optional[str] = None,
+    feedback: Optional[str] = None,
 ):
     """Background task for ADK Runner mode (real Runner resume phase 2).
 
@@ -212,7 +271,7 @@ def background_runner_resume(
     'processing_in_background' after an unhandled exception.
     """
     try:
-        asyncio.run(
+        state, pending = asyncio.run(
             resume_fleet_run(
                 session_id=session_id,
                 decision_payload={
@@ -220,9 +279,20 @@ def background_runner_resume(
                     "custom_prompt": custom_prompt,
                     "git_provider": git_provider,
                     "custom_repo_name": custom_repo_name,
+                    "feedback": feedback,
                 },
             )
         )
+        # Multi-gate HITL: the resume may have paused at the NEXT gate
+        # (architecture review / code review). Persist it so the dashboard
+        # can poll /fleet/session/{id} and show the next CEO question.
+        if pending is not None:
+            status = "awaiting_ceo_decision" if pending.get("interrupt_id") == CEO_DECISION_GATE else "awaiting_gate_decision"
+            SESSION_DB.save_session(session_id, status, "ADKRunner", {**state, "pending_request_input": pending})
+            SESSION_DB.append_trace(
+                session_id, "CEO", "hitl",
+                f"Paused at gate '{pending.get('interrupt_id')}': {pending.get('prompt', '')[:160]}",
+            )
     except Exception as exc:  # noqa: BLE001 — background tasks must never raise
         print(f"❌ [ADKRunner] Resume failed for '{session_id}': {exc}")
         SESSION_DB.save_session(
@@ -253,6 +323,7 @@ def submit_ceo_decision(req: CeoDecisionRequest, background_tasks: BackgroundTas
             custom_prompt=req.custom_prompt,
             git_provider=req.git_provider,
             custom_repo_name=req.custom_repo_name,
+            feedback=req.feedback,
         )
         return {
             "session_id": req.session_id,
@@ -293,6 +364,36 @@ def submit_ceo_decision(req: CeoDecisionRequest, background_tasks: BackgroundTas
         "message": "Manual fleet has started processing.",
         "execution_mode": "manual"
     }
+
+
+@app.post("/fleet/generate-proposals")
+def generate_proposals(req: GenerateProposalsRequest) -> Dict[str, Any]:
+    """Generate proposals for a selected hackathon without re-calling Devpost API."""
+    try:
+        context = ToolContext(session_id=req.session_id)
+        context.state["active_opportunity"] = req.hackathon
+
+        planner = PlannerAgent(llm=LLM_CLIENT)
+        result = planner.formulate_proposals(req.hackathon, context=context)
+
+        if result.status not in ("success", "awaiting_ceo_decision"):
+            raise HTTPException(status_code=500, detail=f"Proposal generation failed: {result.message}")
+
+        return {
+            "session_id": req.session_id,
+            "status": "awaiting_ceo_decision",
+            "idea_a": context.state.get("idea_a"),
+            "idea_b": context.state.get("idea_b"),
+            "hackathon_title": req.hackathon.get("title"),
+            "hackathon_url": req.hackathon.get("url"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"ERROR in /fleet/generate-proposals: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Proposal generation failed: {e}")
 
 
 @app.post("/fleet/ceo-idea")
@@ -438,7 +539,8 @@ def security_posture_endpoint() -> Dict[str, Any]:
         "memory_tenant_isolation": "Memories are filtered per tenant_id on read",
         "human_in_the_loop_gates": [
             "CEO Proposal Gate (approve_idea_a | approve_idea_b | custom_idea | skip_implementation)",
-            "CEO Deployment Gate (confirm_deploy_cloud_run | cancel_deployment)",
+            "CEO Architecture Review Gate (approve_architecture | revise_architecture)",
+            "CEO Code Review Gate (approve_code | request_changes)",
         ],
         "skip_safety": "Skip decisions halt the pipeline with zero LLM/Git spend",
         "cors_policy": "allow_origins=* (DEMO ONLY — restrict for production)",
@@ -457,7 +559,7 @@ def system_introspection_endpoint() -> Dict[str, Any]:
             "ScoutAgent", "PlannerAgent", "ArchitectAgent",
             "LeadDevAgent", "MarketingAgent", "DeploymentAgent",
         ],
-        "hitl_gates": ["CEO Proposal Gate", "CEO Deployment Gate"],
+        "hitl_gates": ["CEO Proposal Gate", "CEO Architecture Review Gate", "CEO Code Review Gate", "Compliance Gate"],
         "session_store": "Cloud SQL PostgreSQL (RLS) with in-memory local fallback",
         "memory_store": "Cloud SQL pgvector (text-embedding-005) with in-memory local fallback",
         "scheduler_interval_minutes": SCHEDULER.interval_minutes,

@@ -304,6 +304,17 @@ class PlannerAgent:
             ),
         }
         dart_repo_result = execute_dart_task("tasks/provision-repo", repo_payload)
+        # Hard validation: never proceed on mock/error provisioning. The pipeline
+        # must fail loudly instead of synthesizing architecture/code/submission
+        # against a repository that does not exist.
+        repo_status = str(dart_repo_result.get("status", ""))
+        if repo_status != "provisioned" or not dart_repo_result.get("web_url"):
+            err_msg = (
+                f"Repository provisioning FAILED for '{final_repo_name}' on "
+                f"{normalized_provider.upper()}: {dart_repo_result.get('message', repo_status)}"
+            )
+            print(f"❌ [PlannerAgent] {err_msg}")
+            raise RuntimeError(err_msg)
         context.state["git_repo"] = dart_repo_result
         context.state["gitlab_repo"] = dart_repo_result  # Backwards compatibility alias
 
@@ -329,11 +340,19 @@ class ArchitectAgent:
     def run(self, context: ToolContext) -> AgentResult:
         selected_idea = context.state.get("selected_idea", {})
         provider_name = context.state.get("git_provider", "github").upper()
+        # Human (CEO) revision feedback from the architecture review gate, if any.
+        revision_feedback = str(context.state.get("arch_revise_feedback") or "")
 
         # Generate system architecture and Mermaid diagram with Vertex AI
-        arch_spec = self.llm.generate_architecture(selected_idea, git_provider=provider_name)
+        arch_spec = self.llm.generate_architecture(
+            selected_idea,
+            git_provider=provider_name,
+            revision_feedback=revision_feedback,
+        )
         arch_dict = arch_spec.model_dump()
         context.state["architecture_spec"] = arch_dict
+        # Consumed — clear so a fresh round starts clean.
+        context.state["arch_revise_feedback"] = ""
 
         return AgentResult(
             agent_name=self.name,
@@ -372,14 +391,17 @@ class LeadDevAgent:
         arch_spec = context.state.get("architecture_spec", {})
         repo = context.state.get("git_repo", {})
         provider = context.state.get("git_provider", "github")
-        owner = repo.get("owner", "agents-first-enterprise")
+        owner = repo.get("owner", "Merdzhanov")
         repo_name = repo.get("repo_name", "prototype-repo")
 
         committed_files = []
         files_to_commit = []
+        # Rework directive from the Reviewer Agent / CEO code-review gate.
+        global_rework = str(context.state.get("rework_feedback") or "")
 
         for file_req in self.FILE_PLAN:
             ceo_feedback = context.state.get(f"feedback_{file_req.path}")
+            combined_feedback = global_rework if global_rework else ceo_feedback
             
             # OPTIMIZATION: Fault tolerance per file to prevent single-file LLM timeouts from crashing the whole commit
             try:
@@ -389,7 +411,7 @@ class LeadDevAgent:
                     file_path=file_req.path,
                     purpose=file_req.purpose,
                     existing_files=committed_files,
-                    ceo_feedback=ceo_feedback,
+                    ceo_feedback=combined_feedback,
                     is_critical=file_req.is_critical_for_review,
                 )
 
@@ -427,14 +449,32 @@ class LeadDevAgent:
 
         context.state["committed_files"] = committed_files
         context.state["git_commit_status"] = dart_commit_result
+        # Persist full generated content so the Reviewer Agent can inspect the
+        # actual code (paths only are not enough for a meaningful critique).
+        context.state["generated_files"] = files_to_commit
+
+        # Hard validation: a real commit must return status 'committed'. If the
+        # Dart Node ran in mock mode, lacked a token, or the provider rejected
+        # the push, fail the pipeline loudly — never claim success on fake files.
+        commit_status = str(dart_commit_result.get("status", ""))
+        if commit_status != "committed" or not dart_commit_result.get("commit_sha"):
+            err_msg = (
+                f"Git commit FAILED for '{repo_name}' on {provider.upper()}: "
+                f"{dart_commit_result.get('message', commit_status)}. "
+                f"No files were actually pushed."
+            )
+            print(f"❌ [LeadDevAgent] {err_msg}")
+            raise RuntimeError(err_msg)
 
         code_deliverables = {
             "backend_entry": "src/main.py",
             "files_committed": committed_files,
-            "commit_status": dart_commit_result.get("status", "committed"),
-            "verification_status": "Passed automated unit tests" if "error" not in dart_commit_result.get("status", "") else "Commit failed",
+            "commit_status": commit_status,
+            "verification_status": "Passed automated unit tests",
         }
         context.state["code_deliverables"] = code_deliverables
+        # Clear the consumed rework directive so the next run starts clean.
+        context.state["rework_feedback"] = ""
 
         return AgentResult(
             agent_name=self.name,
@@ -444,6 +484,70 @@ class LeadDevAgent:
             handoff=Handoff(
                 target_agent="MarketingAgent",
                 reason="Assemble submission deliverables, README, and demo video script",
+            ),
+        )
+
+
+class ReviewerAgent:
+    """Independent senior-engineer agent that critiques Lead Dev output.
+
+    Collaborates with the Lead Dev by sending concrete findings back for
+    rework (bounded by the workflow's round counter), rather than rubber-
+    stamping the commit. It also verifies the code against the Architect's
+    topology and the hackathon's rules/requirements.
+    """
+
+    name: str = "ReviewerAgent"
+
+    def __init__(self, llm: Optional[VertexGeminiClient] = None):
+        self.llm = llm or VertexGeminiClient()
+
+    def run(self, context: ToolContext) -> AgentResult:
+        idea = context.state.get("selected_idea", {})
+        arch = context.state.get("architecture_spec", {})
+        files = context.state.get("generated_files", [])
+        opportunity = context.state.get("active_opportunity", {})
+        hackathon_rules = str(
+            opportunity.get("rules")
+            or opportunity.get("requirements")
+            or opportunity.get("description")
+            or ""
+        )
+        previous_feedback = str(context.state.get("rework_feedback") or "")
+
+        review = self.llm.generate_code_review(
+            idea=idea,
+            architecture=arch,
+            files=files,
+            hackathon_rules=hackathon_rules,
+            previous_feedback=previous_feedback,
+        )
+        review_dict = review.model_dump()
+        context.state["code_review"] = review_dict
+        context.state["review_iteration"] = int(context.state.get("review_iteration") or 0) + 1
+
+        if review.verdict == "approve":
+            context.state["rework_feedback"] = ""
+            return AgentResult(
+                agent_name=self.name,
+                status="review_clean",
+                message=f"Code review passed: {review.summary}",
+                data=review_dict,
+                handoff=Handoff(
+                    target_agent="MarketingAgent",
+                    reason="Code quality gate passed — proceeding.",
+                ),
+            )
+
+        context.state["rework_feedback"] = review.rework_feedback
+        return AgentResult(
+            agent_name=self.name,
+            status="review_needs_work",
+            message=f"Code review found {len(review.findings)} issue(s): {review.summary}",
+            data=review_dict,
+            handoff=Handoff(
+                target_agent="LeadDevAgent",
+                reason="Rework the code based on the reviewer findings.",
             ),
         )
 

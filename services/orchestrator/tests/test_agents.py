@@ -1,14 +1,26 @@
-"""Unit and Integration Tests for Agent-First Orchestrator Fleet."""
+"""Unit and Integration Tests for Agent-First Orchestrator Fleet.
+
+All external boundaries are mocked deterministically:
+  - Dart Functional Node HTTP calls (app.agents.execute_dart_task)
+  - Vertex AI LLM methods (patched on VertexGeminiClient — every agent
+    constructs its own client via `llm or VertexGeminiClient()`)
+
+The dart-node contract mirrors services/dart_node: provision-repo MUST
+return status='provisioned' + web_url (the PlannerAgent validation gate
+fails loudly on anything else — faked provisioning is forbidden).
+"""
 import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Ensure orchestrator directory is in sys.path
 ORCHESTRATOR_DIR = Path(__file__).resolve().parent.parent
 if str(ORCHESTRATOR_DIR) not in sys.path:
     sys.path.insert(0, str(ORCHESTRATOR_DIR))
 
+import app.agents as agents_mod
 from app.agents import (
     ArchitectAgent,
     LeadDevAgent,
@@ -16,11 +28,146 @@ from app.agents import (
     PlannerAgent,
     ScoutAgent,
 )
+from app.llm import VertexGeminiClient
+from app.schemas import (
+    ArchitectureComponent,
+    ArchitectureSpec,
+    CodeReview,
+    DualProposalResponse,
+    GeneratedFile,
+    IdeaProposal,
+    SubmissionPackage,
+)
 from app.tools import Handoff, RequestInput, ToolContext
+
+
+def _fake_dart(endpoint_path: str, payload=None, *args, **kwargs) -> dict:
+    """Deterministic stand-in for the Dart Functional Node microservice."""
+    if endpoint_path == "tasks/parse-brief":
+        matches = []
+        for h in (payload or {}).get("hackathons", []):
+            match = dict(h)
+            match.setdefault("url", f"https://{h.get('id', 'hack')}.devpost.com/")
+            matches.append(match)
+        return {
+            "status": "success",
+            "source": "unit_mock",
+            "total_evaluated": len(matches),
+            "filtered_count": len(matches),
+            "matches": matches,
+        }
+    if endpoint_path == "tasks/provision-repo":
+        p = payload or {}
+        repo_name = p.get("repo_name", "prototype-repo")
+        return {
+            "status": "provisioned",
+            "repo_name": repo_name,
+            "web_url": f"https://github.com/Merdzhanov/{repo_name}",
+            "provider": p.get("provider", "github"),
+        }
+    if endpoint_path == "tasks/commit-files":
+        files = (payload or {}).get("files") or []
+        return {
+            "status": "committed",
+            "commit_sha": "unitsha123456",
+            "files_committed": [
+                f.get("path") for f in files if isinstance(f, dict)
+            ],
+        }
+    return {"status": "ok", "echo": payload}
+
+
+def _fake_proposals(self, opportunity, memory_context=None) -> DualProposalResponse:
+    return DualProposalResponse(
+        idea_a=IdeaProposal(
+            id="idea_a_event_fleet",
+            title="EphemeraFlow: Governed Multi-Agent Fleet",
+            summary="Hybrid polyglot architecture with Dart Shelf workers on Cloud Run.",
+            tech_stack=["Google ADK 2.0", "Dart Shelf", "Cloud Run"],
+            track_fit="Enterprise AI",
+            impact="99.9% uptime",
+            repo_name="ephemeraflow-governed-fleet",
+        ),
+        idea_b=IdeaProposal(
+            id="idea_b_compliance_rag",
+            title="ArmorGuard: Row-Level Secure Multi-Tenant Hub",
+            summary="Privacy-first architecture with strict tenant isolation.",
+            tech_stack=["Vertex AI Gemini", "Cloud SQL RLS"],
+            track_fit="Security & Governance",
+            impact="Zero cross-tenant leaks",
+            repo_name="armorguard-secure-hub",
+        ),
+        reasoning="Both ideas map to the discovered hackathon tracks.",
+    )
+
+
+def _fake_architecture(self, idea, git_provider: str = "GITHUB", revision_feedback: str = "") -> ArchitectureSpec:
+    return ArchitectureSpec(
+        title=f"Cloud Native Architecture: {idea.get('title', 'Enterprise Prototype')}",
+        diagram_mermaid="graph TD; A[Cloud Run] --> B[Cloud SQL]",
+        components=[
+            ArchitectureComponent(
+                name="API Gateway", service_type="Cloud Run", role="Serves the fleet API"
+            ),
+        ],
+    )
+
+
+def _fake_source_file(
+    self, idea, architecture, file_path, purpose, existing_files,
+    ceo_feedback=None, is_critical=False,
+) -> GeneratedFile:
+    return GeneratedFile(
+        path=file_path,
+        content=f"# mock implementation of {file_path}\n",
+        language="python",
+        commit_message=f"feat: scaffold {file_path}",
+    )
+
+
+def _fake_submission(self, idea, repo_url, test_results) -> SubmissionPackage:
+    return SubmissionPackage(
+        title=idea.get("title", "Enterprise Prototype"),
+        tagline="Autonomous governed fleet prototype",
+        demo_script_markdown="## 0:00 Intro\nThe fleet wakes up...",
+        devpost_description="# Prototype\nBuilt with the Google ADK workflow engine.",
+        features_and_functionality=["HITL CEO gates", "Real ADK Runner"],
+        technologies_used=["Vertex AI", "Cloud Run"],
+        learnings="Workflow interrupts map cleanly onto HITL gates.",
+    )
+
+
+def _fake_code_review(
+    self, idea, architecture, files, hackathon_rules, previous_feedback="",
+) -> CodeReview:
+    return CodeReview(
+        verdict="approve",
+        summary="Mock review: implementation matches the architecture contract.",
+        findings=[],
+        rework_feedback="",
+    )
 
 
 class TestOrchestratorFleet(unittest.TestCase):
     def setUp(self):
+        # Dart node: never hit the network from unit tests.
+        dart_patcher = patch.object(agents_mod, "execute_dart_task", _fake_dart)
+        dart_patcher.start()
+        self.addCleanup(dart_patcher.stop)
+
+        # Vertex AI: patch at class level so every agent's own client
+        # instance (`llm or VertexGeminiClient()`) uses deterministic fakes.
+        for method_name, fake in (
+            ("generate_proposals", _fake_proposals),
+            ("generate_architecture", _fake_architecture),
+            ("generate_source_file", _fake_source_file),
+            ("generate_submission", _fake_submission),
+            ("generate_code_review", _fake_code_review),
+        ):
+            llm_patcher = patch.object(VertexGeminiClient, method_name, fake)
+            llm_patcher.start()
+            self.addCleanup(llm_patcher.stop)
+
         self.mock_feed = {
             "min_prize_pool": 1000,
             "require_online": True,

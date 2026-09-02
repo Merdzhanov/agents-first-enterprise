@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:test/test.dart';
 import '../lib/services/brief_parser.dart';
 import '../lib/services/devpost_service.dart';
@@ -45,7 +49,7 @@ void main() {
   });
 
   group('GitLabService', () {
-    test('mock provisions repository and formats response', () async {
+    test('fails loudly when no private token is configured (no mock)', () async {
       final gitLab = GitLabService(privateToken: null);
       final result = await gitLab.provisionRepository(
         repoName: 'Autonomous Agent Fleet',
@@ -53,13 +57,13 @@ void main() {
         readmeContent: '# Test',
       );
 
-      expect(result['status'], equals('provisioned_mock'));
-      expect(result['repo_name'], equals('autonomous-agent-fleet'));
-      expect(result['web_url'], contains('gitlab.com/agents-first-enterprise/autonomous-agent-fleet'));
-      expect(result['files_committed'], contains('README.md'));
+      expect(result['status'], equals('error'));
+      expect(result['error_type'], equals('GitLabTokenNotConfigured'));
+      // Critical: no fake web_url must ever appear.
+      expect(result['web_url'], isNull);
     });
 
-    test('mock commits multiple files to GitLab', () async {
+    test('fails loudly on commit when no private token (no mock)', () async {
       final gitLab = GitLabService(privateToken: null);
       final result = await gitLab.commitFiles(
         projectId: 12345,
@@ -70,14 +74,13 @@ void main() {
         ],
       );
 
-      expect(result['status'], equals('committed_mock'));
-      expect(result['committed_files'], contains('src/main.py'));
-      expect(result['committed_files'], contains('Dockerfile'));
+      expect(result['status'], equals('error'));
+      expect(result['error_type'], equals('GitLabTokenNotConfigured'));
     });
   });
 
   group('GitHubService', () {
-    test('mock provisions GitHub repository and formats response', () async {
+    test('fails loudly when no private token is configured (no mock)', () async {
       final gitHub = GitHubService(privateToken: null);
       final result = await gitHub.provisionRepository(
         repoName: 'EphemeraFlow Fleet',
@@ -85,17 +88,16 @@ void main() {
         readmeContent: '# EphemeraFlow',
       );
 
-      expect(result['status'], equals('provisioned_mock'));
-      expect(result['provider'], equals('github'));
-      expect(result['repo_name'], equals('ephemeraflow-fleet'));
-      expect(result['web_url'], contains('github.com/agents-first-enterprise/ephemeraflow-fleet'));
-      expect(result['files_committed'], contains('README.md'));
+      expect(result['status'], equals('error'));
+      expect(result['error_type'], equals('GitHubTokenNotConfigured'));
+      // Critical: no fake web_url must ever appear.
+      expect(result['web_url'], isNull);
     });
 
-    test('mock commits multiple files to GitHub', () async {
+    test('fails loudly on commit when no private token (no mock)', () async {
       final gitHub = GitHubService(privateToken: null);
       final result = await gitHub.commitFiles(
-        owner: 'agents-first-enterprise',
+        owner: 'Merdzhanov',
         repoName: 'ephemeraflow-fleet',
         files: [
           {'path': 'src/main.py', 'content': 'print("hello")', 'commit_message': 'Add main.py'},
@@ -103,20 +105,69 @@ void main() {
         ],
       );
 
-      expect(result['status'], equals('committed_mock'));
-      expect(result['committed_files'], contains('src/main.py'));
-      expect(result['committed_files'], contains('Dockerfile'));
+      expect(result['status'], equals('error'));
+      expect(result['error_type'], equals('GitHubTokenNotConfigured'));
     });
   });
 
   group('DevpostService (Direct Function)', () {
     test('fetches and filters hackathons deterministically without MCP', () async {
-      final devpost = DevpostService();
+      // Inject a mock HTTP client so the test is deterministic (no live network).
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          jsonEncode({
+            'hackathons': [
+              {
+                'id': '30721',
+                'title': 'Agentic Cinema: The Blockbuster Hackathon',
+                'displayed_location': 'Online',
+                'prize_amount': 75000,
+                'url': 'https://agentic-cinema.devpost.com/',
+              },
+              {
+                'id': '30722',
+                'title': 'Local In-Person Meetup',
+                'displayed_location': 'San Francisco, CA',
+                'prize_amount': 10000,
+                'url': 'https://local-meetup.devpost.com/',
+              },
+              {
+                'id': '30723',
+                'title': 'Tiny Prize Hackathon',
+                'displayed_location': 'Online',
+                'prize_amount': 500,
+                'url': '/tiny-prize-hackathon',
+              },
+            ],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+
+      final devpost = DevpostService(client: mockClient);
       final result = await devpost.fetchAndFilterHackathons(minPrizePool: 5000);
 
       expect(result['status'], equals('success'));
+      expect(result['filtered_count'], equals(1));
       expect(result['matches'], isNotEmpty);
-      expect(result['matches'][0]['title'], contains('Google Cloud'));
+      // Online + above prize threshold → only the Agentic Cinema hackathon survives.
+      expect(result['matches'][0]['title'], contains('Agentic Cinema'));
+      // Relative URLs are normalized to absolute devpost.com URLs.
+      expect(result['matches'].length, equals(1));
+    });
+
+    test('returns empty matches when Devpost API is unreachable', () async {
+      final mockClient = MockClient((request) async {
+        throw http.ClientException('Connection refused');
+      });
+
+      final devpost = DevpostService(client: mockClient);
+      final result = await devpost.fetchAndFilterHackathons();
+
+      expect(result['status'], equals('success'));
+      expect(result['matches'], isEmpty);
+      expect(result['error'], isNotNull);
     });
   });
 }

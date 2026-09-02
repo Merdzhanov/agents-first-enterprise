@@ -26,19 +26,17 @@ class GitLabService {
         .replaceAll(RegExp(r'[^a-z0-9_-]'), '-')
         .replaceAll(RegExp(r'-+'), '-');
 
-    // If no token is provided in dev environment, run in mock-deterministic mode
+    // No token → hard failure (no mock). The pipeline must fail loudly so the
+    // CEO dashboard never shows a fake repo. Configure GITLAB_TOKEN on the
+    // dart-node Cloud Run service to provision real repositories.
     if (privateToken == null || privateToken!.isEmpty) {
       return {
-        'status': 'provisioned_mock',
+        'status': 'error',
         'provider': 'gitlab',
-        'owner': 'agents-first-enterprise',
-        'repo_name': sanitizedName,
-        'web_url': 'https://gitlab.com/agents-first-enterprise/$sanitizedName',
-        'project_id': 10000000 + sanitizedName.hashCode.abs() % 90000000,
-        'license': license,
-        'visibility': isPublic ? 'public' : 'private',
-        'files_committed': ['README.md', 'LICENSE', '.gitignore'],
-        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'error_type': 'GitLabTokenNotConfigured',
+        'message': 'GITLAB_TOKEN is not configured on the Dart Node service. '
+            'Set GITLAB_TOKEN so the fleet can provision real repositories — '
+            'mock provisioning is no longer allowed.',
       };
     }
 
@@ -67,7 +65,7 @@ class GitLabService {
         return {
           'status': 'provisioned',
           'provider': 'gitlab',
-          'owner': 'agents-first-enterprise',
+          'owner': 'Merdzhanov',
           'repo_name': sanitizedName,
           'web_url': data['web_url'],
           'project_id': projectId,
@@ -84,7 +82,7 @@ class GitLabService {
         'provider': 'gitlab',
         'error_type': 'GitLabProvisioningFailed',
         'message': e.toString(),
-        'fallback_url': 'https://gitlab.com/agents-first-enterprise/$sanitizedName',
+        'fallback_url': 'https://gitlab.com/Merdzhanov/$sanitizedName',
       };
     }
   }
@@ -96,13 +94,12 @@ class GitLabService {
     required List<Map<String, dynamic>> files,
   }) async {
     if (privateToken == null || privateToken!.isEmpty) {
-      final fileNames = files.map((f) => f['path']?.toString() ?? 'file').toList();
       return {
-        'status': 'committed_mock',
+        'status': 'error',
         'provider': 'gitlab',
-        'repo_name': repoName,
-        'committed_files': fileNames,
-        'commit_sha': 'mock_gitlab_sha_${DateTime.now().millisecondsSinceEpoch}',
+        'error_type': 'GitLabTokenNotConfigured',
+        'message': 'GITLAB_TOKEN is not configured on the Dart Node service. '
+            'Refusing to fake a commit — set GITLAB_TOKEN to push real files.',
       };
     }
 
@@ -125,7 +122,9 @@ class GitLabService {
   }
 
   Future<void> _commitFile(dynamic projectId, String filePath, String content, String commitMsg) async {
-    if (privateToken == null || privateToken!.isEmpty) return;
+    if (privateToken == null || privateToken!.isEmpty) {
+      throw StateError('GITLAB_TOKEN not configured — cannot commit file $filePath.');
+    }
 
     final url = '$gitlabApiUrl/projects/$projectId/repository/files/${Uri.encodeComponent(filePath)}';
     await http.post(

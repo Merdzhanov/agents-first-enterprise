@@ -20,7 +20,7 @@ class DevpostService {
     List<String> keywords = const ['google', 'vertex', 'agent', 'ai', 'cloud'],
   }) async {
     try {
-      final uri = Uri.parse('$apiUrl?challenge_type[]=online&status[]=upcoming&status[]=open');
+      final uri = Uri.parse('$apiUrl?challenge_type[]=online&eligibility=1&open_to[]=public&status[]=upcoming&status[]=open');
       final response = await _client.get(
         uri,
         headers: {
@@ -38,16 +38,32 @@ class DevpostService {
           if (item is! Map<String, dynamic>) continue;
 
           final title = (item['title'] ?? '').toString();
-          final bool isOnline = item['is_online'] ?? (item['challenge_type'] == 'online');
+          // Devpost API does not return is_online/challenge_type fields.
+          // Use displayed_location to determine if hackathon is online.
+          final dynamic displayedLocation = item["displayed_location"];
+          final String locationStr = displayedLocation is Map
+              ? (displayedLocation["location"]?.toString() ?? "").toLowerCase()
+              : (displayedLocation?.toString() ?? "").toLowerCase();
+          final bool isOnline = locationStr.contains("online") ||
+              locationStr.contains("everywhere") ||
+              locationStr.contains("global");
           final int prizeAmount = _extractPrize(item['prize_amount']);
 
           if (requireOnline && !isOnline) continue;
           if (prizeAmount < minPrizePool && minPrizePool > 0) continue;
 
+          // Ensure URL is absolute — Devpost API sometimes returns relative paths
+          final rawUrl = item['url']?.toString() ?? '';
+          final absoluteUrl = rawUrl.startsWith('http')
+              ? rawUrl
+              : rawUrl.startsWith('/')
+                  ? 'https://devpost.com$rawUrl'
+                  : 'https://devpost.com/hackathons/${rawUrl.replaceAll(' ', '-').toLowerCase()}';
+
           matches.add({
             'id': item['id']?.toString() ?? 'hack_${matches.length + 1}',
             'title': title,
-            'url': item['url'] ?? 'https://devpost.com',
+            'url': absoluteUrl,
             'submission_deadline': item['submission_period_dates'] ?? item['time_left_to_submission'] ?? '2026-09-30',
             'prize_pool': prizeAmount > 0 ? prizeAmount : 50000,
             'eligible_gcp_apis': ['Vertex AI', 'Cloud Run', 'Firestore', 'Pub/Sub'],
@@ -67,35 +83,18 @@ class DevpostService {
         }
       }
     } catch (e) {
-      print('Devpost API network query fallback: $e');
+      print('Devpost API query failed: $e');
     }
 
-    // High-fidelity fallback when offline or Devpost rate-limited
+    // No fallback — return empty matches so the frontend shows a real error
+    // instead of fake hackathons with generic Devpost URLs.
     return {
       'status': 'success',
-      'source': 'deterministic_fallback',
-      'total_evaluated': 12,
-      'filtered_count': 2,
-      'matches': [
-        {
-          'id': 'hack_google_cloud_agent_challenge',
-          'title': 'Google Cloud & Vertex AI Agent Challenge',
-          'url': 'https://devpost.com/hackathons',
-          'submission_deadline': '2026-09-30',
-          'prize_pool': 100000,
-          'eligible_gcp_apis': ['Vertex AI', 'Cloud Run', 'Firestore', 'Pub/Sub'],
-          'tracks': ['Fortified Enterprise Fleet', 'Agentic Systems'],
-        },
-        {
-          'id': 'hack_gemini_enterprise_sprint',
-          'title': 'Gemini 3.5 Enterprise Multi-Agent Sprint',
-          'url': 'https://devpost.com/hackathons',
-          'submission_deadline': '2026-10-15',
-          'prize_pool': 75000,
-          'eligible_gcp_apis': ['Vertex AI', 'Cloud Run', 'Cloud SQL RLS'],
-          'tracks': ['Security & Governance', 'Enterprise AI'],
-        }
-      ],
+      'source': 'devpost_live_api',
+      'total_evaluated': 0,
+      'filtered_count': 0,
+      'matches': [],
+      'error': 'Devpost API unreachable or returned no results',
       'timestamp': DateTime.now().toUtc().toIso8601String(),
     };
   }

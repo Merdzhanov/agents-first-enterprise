@@ -29,14 +29,14 @@ class DeploymentAgent:
             # which the Runner natively catches to safely park the session.
             self.prepare_deployment_plan(context)
             
-        return self.execute_deployment(decision, context)
+        return self.execute_deployment(decision or "confirm_deploy_cloud_run", context)
 
     def prepare_deployment_plan(self, context: ToolContext) -> None:
         """Formulates the deployment specification and raises a RequestInput approval gate."""
         selected_idea = context.state.get("selected_idea", {})
         repo = context.state.get("git_repo", {})
         repo_name = repo.get("repo_name", "prototype-repo")
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "agents-first-enterprise")
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "Merdzhanov")
         
         # Safe fallback for Cloud Region
         region = os.getenv("GOOGLE_CLOUD_REGION") or os.getenv("GOOGLE_CLOUD_LOCATION") or "europe-west1"

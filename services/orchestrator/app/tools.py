@@ -111,8 +111,8 @@ def execute_dart_task(
 ) -> Dict[str, Any]:
     """
     Executes a deterministic task by calling the Dart Shelf Functional Node.
-    Uses Google Cloud OIDC Bearer token when running in GCP / Cloud Run,
-    with local dev fallback.
+    Uses Google Cloud OIDC Bearer token when running in GCP / Cloud Run.
+    Raises urllib.error.URLError if the Dart Node is unreachable.
     """
     base_url = (
         dart_node_base_url
@@ -125,63 +125,24 @@ def execute_dart_task(
         "Content-Type": "application/json",
     }
 
-    # Acquire OIDC identity token for IAM protected Cloud Run instances
-    if os.getenv("GOOGLE_GENAI_USE_VERTEXAI") == "True" and not base_url.startswith("http://127.0.0.1"):
+    # Acquire OIDC identity token for IAM protected Cloud Run instances.
+    # Always authenticate when running in GCP (not localhost).
+    if not base_url.startswith("http://127.0.0.1"):
         id_token = get_oidc_token(audience=base_url)
         if id_token:
             headers["Authorization"] = f"Bearer {id_token}"
+        else:
+            raise RuntimeError(
+                f"Failed to acquire OIDC token for {base_url}. "
+                "Ensure the orchestrator's service account has the "
+                "Cloud Run Invoker (roles/run.invoker) role on the Dart Node service."
+            )
 
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
-    try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.URLError as err:
-        # Provide resilient mock response in local offline simulation
-        print(f"Dart Node at {url} unreachable ({err}). Falling back to internal deterministic driver.")
-        
-        if "parse-brief" in endpoint_path:
-            return {
-                "status": "success_mock",
-                "total_evaluated": len(payload.get("hackathons", [])),
-                "filtered_count": 1,
-                "matches": [
-                    {
-                        "id": "hack_gemini_enterprise",
-                        "title": "Google Cloud & Gemini Multi-Agent Challenge",
-                        "url": "https://googlecloudagents.devpost.com",
-                        "submission_deadline": "2026-09-30",
-                        "deadline": "2026-09-30",
-                        "prize_pool": 75000,
-                        "eligible_gcp_apis": ["Vertex AI", "Cloud Run", "Firestore", "Pub/Sub"],
-                        "tracks": ["Fortified Enterprise Fleet", "Agentic Systems"],
-                    }
-                ],
-            }
-        elif "provision-repo" in endpoint_path:
-            repo_name = payload.get("repo_name", "prototype-repo")
-            provider = payload.get("provider", "github")
-            base = "github.com" if provider == "github" else "gitlab.com"
-            return {
-                "status": "provisioned_mock",
-                "provider": provider,
-                "repo_name": repo_name,
-                "web_url": f"https://{base}/agents-first-enterprise/{repo_name}",
-                "project_id": 99887766,
-                "files_committed": ["README.md", "LICENSE", ".gitignore"],
-            }
-        elif "commit-files" in endpoint_path:
-            files = payload.get("files", [])
-            return {
-                "status": "committed_mock",
-                "provider": payload.get("provider", "github"),
-                "repo_name": payload.get("repo_name", "prototype-repo"),
-                "committed_files": [f.get("path") for f in files],
-                "commit_sha": "mock_sha_123456",
-            }
-            
-        return {"status": "error", "message": str(err)}
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
 
 
 @AdkTool(
