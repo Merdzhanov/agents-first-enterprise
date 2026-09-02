@@ -171,8 +171,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'completed' =>
               'Completed: prototype provisioned and submission packaged',
             'skipped' => 'Pipeline Safely Halted (Skipped by CEO)',
+            'failed' => 'Pipeline failed — see execution log for details',
             _ => 'Fleet status: $status',
           };
+          // Terminal states: stop polling so the UI freezes on the final status.
+          if (status == 'completed' ||
+              status == 'skipped' ||
+              status == 'failed') {
+            _telemetryTimer?.cancel();
+            _telemetryTimer = null;
+          }
         }
       });
       // Fetch real artifacts when pipeline completes (outside setState).

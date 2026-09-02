@@ -379,11 +379,28 @@ def generate_proposals(req: GenerateProposalsRequest) -> Dict[str, Any]:
         if result.status not in ("success", "awaiting_ceo_decision"):
             raise HTTPException(status_code=500, detail=f"Proposal generation failed: {result.message}")
 
+        # Primary: read from top-level keys set by PlannerAgent.formulate_proposals.
+        # Fallback: propose_ideas_to_ceo also nests them under "proposed_ideas".
+        idea_a = context.state.get("idea_a")
+        idea_b = context.state.get("idea_b")
+        if idea_a is None or idea_b is None:
+            nested = context.state.get("proposed_ideas", {})
+            idea_a = idea_a or nested.get("idea_a")
+            idea_b = idea_b or nested.get("idea_b")
+
+        # Persist session so telemetry polling can recover the proposals.
+        SESSION_DB.save_session(
+            req.session_id,
+            "awaiting_ceo_decision",
+            "PlannerAgent",
+            context.state,
+        )
+
         return {
             "session_id": req.session_id,
             "status": "awaiting_ceo_decision",
-            "idea_a": context.state.get("idea_a"),
-            "idea_b": context.state.get("idea_b"),
+            "idea_a": idea_a,
+            "idea_b": idea_b,
             "hackathon_title": req.hackathon.get("title"),
             "hackathon_url": req.hackathon.get("url"),
         }
