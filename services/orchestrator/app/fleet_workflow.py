@@ -90,8 +90,21 @@ def _noop(ctx: Any, reason: str) -> Dict[str, Any]:
 # ---------------------------------------------------------------------
 @node(name="scout_node")
 async def scout_node(ctx: Any):
-    """Deterministic Devpost discovery through the Dart Functional Node."""
+    """Deterministic Devpost discovery through the Dart Functional Node.
+
+    If ``active_opportunity`` is already seeded in the ADK session state
+    (e.g. via /fleet/generate-proposals), skip discovery and use the
+    pre-selected hackathon so the planner generates aligned proposals.
+    """
     tc = _tool_ctx(ctx)
+    # Pre-seeded opportunity: skip discovery, flow straight to planner.
+    if tc.state.get("active_opportunity"):
+        SESSION_DB.append_trace(
+            tc.session_id, "ScoutAgent", "system",
+            "ADK node: active_opportunity pre-seeded — skipping Devpost discovery.",
+        )
+        yield {"status": "success"}
+        return
     SESSION_DB.append_trace(tc.session_id, "ScoutAgent", "dart", "ADK node: invoking Dart Functional Node.")
     scout_result = ScoutAgent().run(tc.state.get("raw_feed", {}), tc)
     _sync_state(ctx, tc)
@@ -593,8 +606,16 @@ FLEET_RUNNER = Runner(node=FLEET_WORKFLOW, session_service=FLEET_SESSION_SERVICE
 _FLEET_USER = "ceo"
 
 
-async def start_fleet_run(session_id: str, raw_feed: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
-    """Runs phase 1 of the workflow. Returns (state, pending_request_input|None)."""
+async def start_fleet_run(
+    session_id: str,
+    raw_feed: Dict[str, Any],
+    state_overrides: Optional[Dict[str, Any]] = None,
+) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+    """Runs phase 1 of the workflow. Returns (state, pending_request_input|None).
+
+    Optional ``state_overrides`` are merged into the initial ADK session state
+    (e.g. ``active_opportunity`` to skip discovery for a pre-selected hackathon).
+    """
     try:
         await FLEET_SESSION_SERVICE.create_session(
             app_name=FLEET_RUNNER.app_name, user_id=_FLEET_USER, session_id=session_id,
@@ -610,13 +631,21 @@ async def start_fleet_run(session_id: str, raw_feed: Dict[str, Any]) -> Tuple[Di
         )
     pending_event = None
     interrupt_ids: list = []
+    # Merge optional state_overrides (e.g. pre-seeded active_opportunity)
+    # into the initial session state_delta.
+    state_delta: Dict[str, Any] = {
+        "session_id": session_id,
+        "raw_feed": raw_feed or {},
+    }
+    if state_overrides:
+        state_delta.update(state_overrides)
     async for event in FLEET_RUNNER.run_async(
         user_id=_FLEET_USER,
         session_id=session_id,
         new_message=genai_types.Content(
             role="user", parts=[genai_types.Part(text="start fleet pipeline")],
         ),
-        state_delta={"session_id": session_id, "raw_feed": raw_feed or {}},
+        state_delta=state_delta,
     ):
         # HITL contract (ADK 2.6.2): a paused node emits a function_call named
         # 'adk_request_input' — there is NO `event.request_input` attribute.

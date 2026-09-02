@@ -368,37 +368,34 @@ def submit_ceo_decision(req: CeoDecisionRequest, background_tasks: BackgroundTas
 
 @app.post("/fleet/generate-proposals")
 def generate_proposals(req: GenerateProposalsRequest) -> Dict[str, Any]:
-    """Generate proposals for a selected hackathon without re-calling Devpost API."""
+    """Generate proposals for a selected hackathon via the ADK Runner workflow.
+
+    The hackathon is pre-seeded as ``active_opportunity`` in the ADK session
+    state so the scout node skips Devpost discovery and the planner generates
+    proposals aligned to the selected hackathon.
+    """
     try:
-        context = ToolContext(session_id=req.session_id)
-        context.state["active_opportunity"] = req.hackathon
-
-        planner = PlannerAgent(llm=LLM_CLIENT)
-        result = planner.formulate_proposals(req.hackathon, context=context)
-
-        if result.status not in ("success", "awaiting_ceo_decision"):
-            raise HTTPException(status_code=500, detail=f"Proposal generation failed: {result.message}")
+        state, pending = asyncio.run(
+            start_fleet_run(
+                session_id=req.session_id,
+                raw_feed={},
+                state_overrides={"active_opportunity": req.hackathon},
+            )
+        )
 
         # Primary: read from top-level keys set by PlannerAgent.formulate_proposals.
         # Fallback: propose_ideas_to_ceo also nests them under "proposed_ideas".
-        idea_a = context.state.get("idea_a")
-        idea_b = context.state.get("idea_b")
+        idea_a = state.get("idea_a")
+        idea_b = state.get("idea_b")
         if idea_a is None or idea_b is None:
-            nested = context.state.get("proposed_ideas", {})
+            nested = state.get("proposed_ideas", {})
             idea_a = idea_a or nested.get("idea_a")
             idea_b = idea_b or nested.get("idea_b")
-
-        # Persist session so telemetry polling can recover the proposals.
-        SESSION_DB.save_session(
-            req.session_id,
-            "awaiting_ceo_decision",
-            "PlannerAgent",
-            context.state,
-        )
 
         return {
             "session_id": req.session_id,
             "status": "awaiting_ceo_decision",
+            "request_input": pending,
             "idea_a": idea_a,
             "idea_b": idea_b,
             "hackathon_title": req.hackathon.get("title"),
