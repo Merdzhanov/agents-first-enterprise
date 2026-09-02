@@ -312,13 +312,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'agent');
 
     try {
+      // Generate a fresh session per hackathon so each selection produces
+      // distinct proposals and appears as its own entry in the history.
+      final newSessionId =
+          'session_governance_${hackathonId}_${DateTime.now().millisecondsSinceEpoch}';
       final result = await _api.generateProposals(
-        sessionId: _sessionId.isEmpty ? 'session_governance_001' : _sessionId,
+        sessionId: newSessionId,
         hackathon: hackathon,
       );
       if (!mounted) return;
       setState(() {
         _isLoading = false;
+        _sessionId = newSessionId;
         _ideaA = (result['idea_a'] as Map<String, dynamic>? ?? const {});
         _ideaB = (result['idea_b'] as Map<String, dynamic>? ?? const {});
         _activeOpportunity = hackathon;
