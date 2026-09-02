@@ -158,7 +158,13 @@ class ApiService {
     if (decoded is! List) {
       throw ApiException('Unexpected response shape from traces endpoint');
     }
-    return decoded.cast<Map<String, dynamic>>();
+    // Eagerly materialize into List<Map<String, dynamic>> — a lazy
+    // .cast<>() view defers the element check to iteration time and can
+    // surface as an opaque WASM runtime type-check failure deep in widgets.
+    return decoded.whereType<Map>().map((e) {
+      if (e is Map<String, dynamic>) return e;
+      return Map<String, dynamic>.from(e);
+    }).toList();
   }
 
   /// Fetches committed artifacts (code files, docs) for a completed session.

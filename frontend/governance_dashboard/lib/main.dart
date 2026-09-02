@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'services/api_service.dart';
@@ -19,7 +21,22 @@ import 'widgets/system_panel.dart';
 import 'widgets/gov_helpers.dart';
 
 void main() {
-  runApp(const AgentEnterpriseApp());
+  debugPrint('[ENV] kIsWasm=$kIsWasm');
+  FlutterError.onError = (details) {
+    debugPrint('[FLUTTER_ERROR] ${details.exceptionAsString()}');
+    debugPrint('[FLUTTER_ERROR] stack: ${details.stack}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('[PLATFORM_ERROR] ${error.runtimeType}: $error');
+    debugPrint('[PLATFORM_ERROR] stack:\n$stack');
+    return true;
+  };
+  runZonedGuarded(() {
+    runApp(const AgentEnterpriseApp());
+  }, (error, stack) {
+    debugPrint('[ZONE_ERROR] ${error.runtimeType}: $error');
+    debugPrint('[ZONE_ERROR] stack:\n$stack');
+  });
 }
 
 class AgentEnterpriseApp extends StatelessWidget {
@@ -159,12 +176,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!mounted) return;
       setState(() {
         if (traces.isNotEmpty) {
-          _logs = traces.reversed.map((t) {
+          // NOTE: the map closure MUST be pinned to Map<String, dynamic>.
+          // If it infers Map<String, String>, `_logs` becomes a
+          // List<Map<String, String>> at runtime while statically typed
+          // List<Map<String, dynamic>> — the next _addLog insert then throws
+          // a covariance TypeError (fatal under dart2wasm's sound checks).
+          _logs = traces.reversed.map<Map<String, dynamic>>((t) {
             final agent = (t['agent_name'] ?? '').toString();
             final msg = (t['msg'] ?? '').toString();
             final prefixed =
                 agent.isEmpty || msg.startsWith(agent) ? msg : '$agent: $msg';
-            return {
+            return <String, dynamic>{
               'time': (t['time'] ?? '--:--:--').toString(),
               'msg': prefixed,
               'type': (t['type'] ?? 'system').toString(),
@@ -239,7 +261,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final timeStr =
         "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
     setState(() {
-      _logs.insert(0, {'time': timeStr, 'msg': msg, 'type': type});
+      _logs.insert(
+          0, <String, dynamic>{'time': timeStr, 'msg': msg, 'type': type});
     });
   }
 
