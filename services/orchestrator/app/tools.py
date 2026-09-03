@@ -202,6 +202,45 @@ def propose_ideas_to_ceo(
 
 
 # =====================================================================
+# FLUTTER WASM BUILD VERIFICATION TOOL
+# =====================================================================
+
+@AdkTool(
+    name="validate_flutter_wasm_build",
+    description="Compiles the generated Flutter project to WebAssembly (WASM) to verify zero dependency conflicts."
+)
+def validate_flutter_wasm_build(
+    project_files: Dict[str, str],
+    tool_context: ToolContext,
+) -> Dict[str, Any]:
+    """Submits the generated files to the Dart Shelf Node for WASM compilation verification."""
+    payload = {
+        "session_id": tool_context.session_id,
+        "files": project_files,
+        "build_command": "flutter build web --wasm",
+        "timeout_seconds": 120,
+    }
+
+    try:
+        build_result = execute_dart_task("tasks/verify-wasm-build", payload)
+        tool_context.state["build_compilation_logs"] = build_result.get("logs", "")
+        tool_context.state["build_status"] = build_result.get("status", "unknown")
+        tool_context.state["build_warnings"] = build_result.get("warnings", [])
+        tool_context.state["build_errors"] = build_result.get("errors", [])
+        return build_result
+    except Exception as e:
+        error_result = {
+            "status": "failed",
+            "logs": f"Build validation request failed: {str(e)}",
+            "errors": [str(e)],
+            "warnings": [],
+        }
+        tool_context.state["build_status"] = "failed"
+        tool_context.state["build_errors"] = [str(e)]
+        return error_result
+
+
+# =====================================================================
 # ADK ALIASES (Compatibility Optimization)
 # =====================================================================
 

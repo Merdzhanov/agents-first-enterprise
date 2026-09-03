@@ -1,0 +1,10 @@
+# Local SQLite dev databases (created at runtime by db.py / ADK session service)
+*.db
+*.sqlite3
+fleet_sessions.db
+adk_sessions.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/

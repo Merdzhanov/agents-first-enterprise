@@ -198,8 +198,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _statusText = switch (status) {
             'awaiting_ceo_decision' =>
               'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name',
+            'awaiting_gate_decision' =>
+              'CEO Review Gate: Architecture or Code review awaiting your decision',
+            'awaiting_deployment_decision' =>
+              'CEO Deployment Gate: Confirm Cloud Run deployment or keep repo only',
             'executing' =>
               'Fleet executing — Architect → Lead Dev → Marketing in progress...',
+            'deploying' =>
+              'Deploying to Cloud Run — building container and rolling out...',
             'completed' =>
               'Completed: prototype provisioned and submission packaged',
             'skipped' => 'Pipeline Safely Halted (Skipped by CEO)',
@@ -419,16 +425,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    final statusMsg = result['message'] ?? 'Pipeline executed successfully.';
-    _addLog('Dart Functional Node: Provisioning ${provider.toUpperCase()} repository $repoUrl', 'dart');
-    _addLog('Architect Agent: Generated GCP system topology and Mermaid architecture diagram.', 'agent');
-    _addLog('Lead Dev Agent: Generated backend services, Cloud Run configs, and tests.', 'agent');
-    _addLog('Marketing Agent: $statusMsg', 'success');
+    final statusMsg = result['message'] ?? 'Pipeline dispatched.';
+    _addLog('ADK Runner: $statusMsg — provisioning $repoUrl in background.', 'system');
+    _addLog('Telemetry: polling for real execution traces every 3s...', 'system');
 
     setState(() {
       _isLoading = false;
-      _statusText = 'Completed: "$conceptName" (${provider.toUpperCase()})';
+      _statusText = 'Fleet executing — Architect → Lead Dev → Marketing in progress...';
     });
+    // Ensure the telemetry timer is active so real backend traces surface.
+    if (_telemetryTimer == null || !_telemetryTimer!.isActive) {
+      _startTelemetryPolling();
+    }
   }
 
   void _skipImplementation() {
