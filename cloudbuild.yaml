@@ -42,7 +42,7 @@ steps:
       - '--set-secrets'
       - 'GITHUB_TOKEN=github-token:latest,GITLAB_TOKEN=gitlab-token:latest'
       - '--set-env-vars'
-      - 'DART_NODE_URL=https://dart-node-service-eb3iwos6ma-ew.a.run.app,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=europe-west1'
+      - 'DART_NODE_URL=https://dart-node-service-eb3iwos6ma-ew.a.run.app,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=europe-west1,GOOGLE_GENAI_USE_VERTEXAI=True'
 
   # ==========================================
   # SERVICE 2: DART NODE
