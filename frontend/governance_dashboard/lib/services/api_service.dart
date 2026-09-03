@@ -111,7 +111,7 @@ class ApiService {
               'raw_feed': rawFeed ?? {},
             }),
           )
-          .timeout(const Duration(seconds: 30)),
+          .timeout(const Duration(seconds: 180)),
     );
     if (decoded is! Map<String, dynamic>) {
       throw ApiException('Unexpected response shape from /fleet/discovery');
@@ -140,7 +140,7 @@ class ApiService {
               'custom_repo_name': customRepoName,
             }),
           )
-          .timeout(const Duration(seconds: 30)),
+          .timeout(const Duration(seconds: 180)),
     );
     if (decoded is! Map<String, dynamic>) {
       throw ApiException('Unexpected response shape from /fleet/ceo-decision');
@@ -295,7 +295,7 @@ class ApiService {
               'session_id': sessionId,
             }),
           )
-          .timeout(const Duration(seconds: 30)),
+          .timeout(const Duration(seconds: 180)),
     );
     if (decoded is! Map<String, dynamic>) {
       throw ApiException('Unexpected response shape from /fleet/ceo-idea');
@@ -319,7 +319,7 @@ class ApiService {
               'hackathon': hackathon,
             }),
           )
-          .timeout(const Duration(seconds: 60)),
+          .timeout(const Duration(seconds: 180)),
     );
     if (decoded is! Map<String, dynamic>) {
       throw ApiException('Unexpected response shape from /fleet/generate-proposals');
@@ -335,7 +335,7 @@ class ApiService {
             Uri.parse('$baseUrl/fleet/scheduled-discovery'),
             headers: await _authHeaders(),
           )
-          .timeout(const Duration(seconds: 60)),
+          .timeout(const Duration(seconds: 180)),
     );
     if (decoded is! Map<String, dynamic>) {
       throw ApiException('Unexpected response shape from /fleet/scheduled-discovery');
