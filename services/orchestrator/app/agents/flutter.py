@@ -55,7 +55,7 @@ class FlutterFrontendAgent:
 
         # Build file generation plan
         files: Dict[str, str] = {
-            "pubspec.yaml": f"Multi-platform config. Targets: {", ".join(platforms)}.",
+            "pubspec.yaml": f"Multi-platform config. Targets: {', '.join(platforms)}.",
             "lib/main.dart": "Platform-aware entry point.",
             "lib/app.dart": "Root MaterialApp with responsive layout.",
         }
@@ -91,17 +91,17 @@ class FlutterFrontendAgent:
 
         return AgentResult(
             agent_name=self.name, status="success",
-            message=f"Flutter app for {repo_name} targeting {", ".join(platforms)} ({len(generated)} files).",
+            message=f"Flutter app for {repo_name} targeting {', '.join(platforms)} ({len(generated)} files).",
             data={"files_generated": list(generated.keys()), "platforms": platforms, "uses_shaders": uses_shaders},
         )
 
     def _build_prompt(self, title, path, purpose, platforms, uses_shaders, shader_path) -> str:
-        p = f"Generate Flutter file: {path}\nPurpose: {purpose}\nPlatforms: {", ".join(platforms)}\n"
+        p = f"Generate Flutter file: {path}\nPurpose: {purpose}\nPlatforms: {', '.join(platforms)}\n"
         p += "Rules: conditional imports (dart.library.io/html), responsive layout, no markdown.\n"
         if uses_shaders and "shader" in path.lower():
             p += f"SHADER: {shader_path}, max 64-80 raymarching steps, uniforms: uTime, uSize\n"
         if "pubspec.yaml" in path:
-            p += f"PUBSPEC: Targets: {", ".join(platforms)}. Cross-platform deps only.\n"
+            p += f"PUBSPEC: Targets: {', '.join(platforms)}. Cross-platform deps only.\n"
         return p
 
 
