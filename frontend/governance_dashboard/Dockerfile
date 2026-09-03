@@ -1,7 +1,7 @@
 # Stage 1: Build Flutter Web directly inside Docker
 FROM ghcr.io/cirruslabs/flutter:stable AS build
 
-ARG ORCHESTRATOR_URL=https://orchestrator-service-952582772348.europe-west1.run.app
+ARG ORCHESTRATOR_URL=https://orchestrator-service-eb3iwos6ma-ew.a.run.app
 
 WORKDIR /app
 COPY . .

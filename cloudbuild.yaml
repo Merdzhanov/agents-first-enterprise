@@ -41,6 +41,8 @@ steps:
       - '0'
       - '--set-secrets'
       - 'GITHUB_TOKEN=github-token:latest,GITLAB_TOKEN=gitlab-token:latest'
+      - '--set-env-vars'
+      - 'DART_NODE_URL=https://dart-node-service-eb3iwos6ma-ew.a.run.app,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=europe-west1'
 
   # ==========================================
   # SERVICE 2: DART NODE
@@ -93,7 +95,7 @@ steps:
       - 'build'
       - 'web'
       - '--wasm'
-      - '--dart-define=ORCHESTRATOR_URL=https://orchestrator-service-952582772348.europe-west1.run.app'
+      - '--dart-define=ORCHESTRATOR_URL=https://orchestrator-service-eb3iwos6ma-ew.a.run.app'
 
   # 8. Build the Frontend Docker image (Nginx wrapper)
   - name: 'gcr.io/cloud-builders/docker'
