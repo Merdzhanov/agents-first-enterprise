@@ -1,63 +1,123 @@
-import 'package:flutter/material.datt';
+import 'package:flutter/material.dart';
 
 import 'concept_card.dart';
 import 'gov_helpers.dart';
 
+/// CEO Proposal Gate â€” presents Concept A / Concept B for approval.
+/// Shows the selected hackathon context for aligned proposal generation.
 class CeoProposalGate extends StatelessWidget {
+  const CeoProposalGate({
+    super.key,
+    required this.activeOpportunity,
+    required this.ideaA,
+    required this.ideaB,
+    required this.isLoading,
+    required this.isSessionReady,
+    required this.onApproveConcept,
+    required this.onLaunchUrl,
+    this.selectedHackathon,
+  });
+
   final Map<String, dynamic> activeOpportunity;
   final Map<String, dynamic> ideaA;
   final Map<String, dynamic> ideaB;
   final bool isLoading;
   final bool isSessionReady;
-  final void Function(String decision, String repoName, String customPrompt)
-      onApproveConcept;
+  final void Function(String conceptName, String defaultRepo,
+      {String? decisionChoiceOverride}) onApproveConcept;
   final ValueChanged<String> onLaunchUrl;
-  final Map<String, dynamic>? selectedHackathonnÂˆš[˜[^Y][ÛÛÛ›Û\Èİ\İÛT™\Ó˜[YPÛÛ›Û\—Âˆš[˜[^Y][ÛÛÛ›Û\Èİ\İÛT›Û\ÛÛ›Û\Â‚ˆÛÛœİÙ[Ô›ÜÜØ[Ø]JÂˆİ\\‹šÙ^Kˆ™\]Z\™Y\Ë˜Xİ]™SÜÜ[š]Kˆ™\]Z\™Y\ËšYXPKˆ™\]Z\™Y\ËšYXP‹ˆ™\]Z\™Y\Ëš\ÓØY[™Ëˆ™\]Z\™Y\Ëš\ÔÙ\ÜÚ[Û”™XYKˆ™\]Z\™Y\Ë›Û\›İ™PÛÛ˜Ù\ˆ™\]Z\™Y\Ë›Û“][˜Ú\›ˆ\ËœÙ[XİYXÚØ]Û‹ˆ\Ë˜İ\İÛT™\Ó˜[YPÛÛ›Û\‹ˆ\Ë˜İ\İÛT›Û\ÛÛ›Û\‹ˆJNÂ‚ˆ\İİš[™ÏˆÜİš[™Ó\İ
-[˜[ZXÈ˜[YJHOˆÛİ”ØY™Tİš[™Ó\İ
-˜[YJ
+  final Map<String, dynamic>? selectedHackathon;
+
+  List<String> _stringList(dynamic value) => govSafeStringList(value);
+
   @override
-  Widget build(Context context) {
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             const SelectableText(
-              'CEO Proposal Gete',
+              'CEO Proposal Gate',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF9D4E4A),
+                color: Color(0xFFD4E4FA),
               ),
             ),
             const Spacer(),
             if (activeOpportunity['url'] != null)
               InkWell(
-                onTap: () => onLaunchUrl(activeOpportunity['url'].toString()),
+                onTap: () =>
+                    onLaunchUrl(activeOpportunity['url'].toString()),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFF38BDF8).withAlpha(20),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: const Color(0xFF38BDF8).withAlpha(60)),
+                    border: Border.all(
+                        color: const Color(0xFF38BDF8).withAlpha(60)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.emotico_events, size: 13, color: Color(0xFF8ED5FF)),
+                      const Icon(Icons.emoji_events,
+                          size: 13, color: Color(0xFF8ED5FF)),
                       const SizedBox(width: 6),
                       SelectableText(
                         'Source: ${activeOpportunity['title'] ?? 'Hackathon'}',
-                        style: const TextStyle(fontSize: 11, color: Color(0xFF8ED5FFJKˆ
-KˆÛÛœİÚ^™Y›Ş
-ÚYˆŠKˆÛÛœİXÛÛŠXÛÛœË›Ü[—Ú[—Û™]ËÚ^™NˆL‹ÛÛÜˆÛÛÜŠ‘QQ‘’’À¢ÒÀ¢’À¢’À¢’À¢ÒÀ¢’À¢6öç7B6—¦VD&÷‚††V–v‡C¢"’À¢–b‡6VÆV7FVD†6¶F†öâÒçVÆÂ’ö'V–ÆE6VÆV7FVD†6¶F†öä&ææW"‚’À¢6öç7B6—¦VD&÷‚††V–v‡C¢"’À¢&÷r€¢6†–ÆG&Vã¢°¢W‡æFVB€¢6†–ÆC¢ö'V–ÆE&÷÷6Ä6&B€¢Fs¢t6öæ6WBrÀ¢–FV¢–FVÀ¢–×7D6öÆ÷#¢6öç7B6öÆ÷"ƒ„dc3DC3“’’À¢w&F–VçD6öÆ÷'3¢¶6öç7B6öÆ÷"ƒ„dcd#dCB’Â6öç7B6öÆ÷"ƒ„dc4#ƒ$cb•ÒÀ¢FV6—6–öä6†ö–6S¢v&÷fUö–FVörÀ¢—5&VG“¢—56W76–öå&VG’À¢7W7FöÕ&WôæÖT6öçG&öÆÆW#¢7W7FöÕ&WôæÖT6öçG&öÆÆW"À¢7W7FöÕ&ö×D6öçG&öÆÆW#¢7W7FöÕ&ö×D6öçG&öÆÆW"À¢’À¢’À¢6öç7B6—¦VD&÷‚‡v–GFƒ¢"’À¢W‡æFVB€¢6†–ÆC¢ö'V–ÆE&÷÷6Ä6&B€¢Fs¢t6öæ6WB"rÀ¢–FV¢–FV"À¢–×7D6öÆ÷#¢6öç7B6öÆ÷"ƒ„ddd$$c#B’À¢w&F–VçD6öÆ÷'3¢¶6öç7B6öÆ÷"ƒ„dDcS”S"’Â6öç7B6öÆ÷"ƒ„dTccCCB•ÒÀ¢FV6—6–öä6†ö–6S¢v&÷fUö–FVö"rÀ¢—5&VG“¢—56W76–öå&VG’À¢7W7FöÕ&WôæÖT6öçG&öÆÆW#¢7W7FöÕ&WôæÖT6öçG&öÆÆW"À¢7W7FöÕ&ö×D6öçG&öÆÆW#¢7W7FöÕ&ö×D6öçG&öÆÆW"À¢’À¢’À¢ÒÀ¢’À¢ÒÀ¢“°¢Ğ  Widget _buildSelectedHackathonBanner() {
-    if (selectedHackathon == null) return const SizedBox.shrink();
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFF8ED5FF)),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.open_in_new,
+                          size: 12, color: Color(0xFF8ED5FF)),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (selectedHackathon != null) _buildSelectedHackathonBanner(),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildProposalCard(
+                tag: 'Concept A',
+                idea: ideaA,
+                impactColor: const Color(0xFF34D399),
+                gradientColors: [const Color(0xFF06B6D4), const Color(0xFF3B82F6)],
+                decisionChoice: 'approve_idea_a',
+                isReady: isSessionReady,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildProposalCard(
+                tag: 'Concept B',
+                idea: ideaB,
+                impactColor: const Color(0xFFC084FC),
+                gradientColors: [const Color(0xFF9333EA), const Color(0xFFD946EF)],
+                decisionChoice: 'approve_idea_b',
+                isReady: isSessionReady,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+
+  Widget _buildSelectedHackathonBanner() {
     final title = (selectedHackathon!['title'] ?? '').toString();
-    final org = (selectedHackathona['organizer'] ?? '').toString();
-    final prize = (selectedHackathona['prize'] ?? '').toString();
-    final deadline = (selectedHackathona['deadline'] ?? '').toString();
-    final themes = _stringList(selectedHackathona['themes']);
-    final url = (selectedHackathona['url'] ?? '').toString();
+    final url = (selectedHackathon!['url'] ?? '').toString();
+    final prize = selectedHackathon!['prize_pool'];
+    final deadline = (selectedHackathon!['submission_deadline'] ?? '').toString();
+    final themes = govThemeNames(selectedHackathon!['themes']);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -69,42 +129,38 @@ KˆÛÛœİÚ^™Y›Ş
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(Icons.emotico_events, size: 14, color: Color(0xFF8ED5FF)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SelectableText(
-                  'Active Hackathon: $title',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.v600,
-                    color: Color(0xFF9D4E4A),
-                  ),
+              Icon(Icons.adjust, size: 14, color: Color(0xFF38BDF8)),
+              SizedBox(width: 8),
+              SelectableText(
+                'PROPOSALS ALIGNED TO SELECTED HACKATHON',
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF8ED5FF),
+                  letterSpacing: 0.5,
                 ),
               ),
             ],
           ),
-          if (org.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.business, size: 11, color: Color(0xFF87929A)),
-                const SizedBox(width: 4),
-                SelectableText(
-                  'Organizer: $org',
-                  style: const TextStyle(fontSize: 11, color: Color(0xFFBDC8D1)),
-                ),
-              ],
-            ),
-          ],
           const SizedBox(height: 8),
+          SelectableText(
+            title,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFD4E4FA),
+            ),
+          ),
+          const SizedBox(height: 4),
           Row(
             children: [
               const Icon(Icons.attach_money, size: 11, color: Color(0xFF87929A)),
               const SizedBox(width: 4),
               SelectableText(
-                prize is num ? '\$${prize.toInt()}' : prize,
+                prize is num ? '\$${prize.toInt()}' : '$prize',
                 style: const TextStyle(fontSize: 11, color: Color(0xFFBDC8D1)),
               ),
               const SizedBox(width: 12),
@@ -121,7 +177,7 @@ KˆÛÛœİÚ^™Y›Ş
             Wrap(
               spacing: 4,
               runSpacing: 4,
-              childres: themes.take(3).map((t) => Container(
+              children: themes.take(3).map((t) => Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: const Color(0xFF38BDF8).withAlpha(15),
@@ -132,7 +188,8 @@ KˆÛÛœİÚ^™Y›Ş
                   style: const TextStyle(fontSize: 9, color: Color(0xFF8ED5FF)),
                 ),
               )).toList(),
-          ),
+            ),
+          ],
           if (url.isNotEmpty) ...[
             const SizedBox(height: 8),
             InkWell(
@@ -154,6 +211,7 @@ KˆÛÛœİÚ^™Y›Ş
       ),
     );
   }
+
   Widget _buildProposalCard({
     required String tag,
     required Map<String, dynamic> idea,
@@ -161,8 +219,6 @@ KˆÛÛœİÚ^™Y›Ş
     required List<Color> gradientColors,
     required String decisionChoice,
     required bool isReady,
-    TextEditingController? customRepoNameController,
-    TextEditionController? customPromptController,
   }) {
     final dynamicTitle = (idea['title'] ?? '').toString();
     final dynamicDescription = (idea['summary'] ?? '').toString();
@@ -184,9 +240,9 @@ KˆÛÛœİÚ^™Y›Ş
       onApprove: isLoading || !isReady
           ? null
           : () => onApproveConcept(
-                decisionChoice,
-                customRepoNameController?.text ?? dynamicRepo,
-                customPromptController?.text ?? '',
+                dynamicTitle,
+                dynamicRepo,
+                decisionChoiceOverride: decisionChoice,
               ),
       hackathonTitle: hackathonTitle.isNotEmpty ? hackathonTitle : null,
       hackathonUrl: hackathonUrl.isNotEmpty ? hackathonUrl : null,
