@@ -101,7 +101,7 @@ steps:
   # SERVICE 3: FRONTEND (Flutter Web)
   # ==========================================
   # 7. Build Flutter Web
-  - name: 'ghcr.io/cirruslabs/flutter:stable'
+  - name: 'europe-west1-docker.pkg.dev/agents-first-enterprise-506916/ci-images/flutter:stable'
     id: 'build-flutter-web'
     waitFor: ['-'] # Starts immediately, parallel to backend services
     dir: 'frontend/governance_dashboard'
