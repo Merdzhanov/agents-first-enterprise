@@ -13,6 +13,7 @@ class CeoProposalGate extends StatelessWidget {
     required this.ideaB,
     required this.isLoading,
     required this.onApproveConcept,
+    required this.isSessionReady,
     required this.onLaunchUrl,
     this.selectedHackathon,
   });
@@ -22,6 +23,7 @@ class CeoProposalGate extends StatelessWidget {
   final Map<String, dynamic> ideaB;
   final bool isLoading;
   final void Function(String conceptName, String defaultRepo,
+  final bool isSessionReady;
       {String? decisionChoiceOverride}) onApproveConcept;
   final ValueChanged<String> onLaunchUrl;
   final Map<String, dynamic>? selectedHackathon;
@@ -89,6 +91,7 @@ class CeoProposalGate extends StatelessWidget {
                 impactColor: const Color(0xFF34D399),
                 gradientColors: [const Color(0xFF06B6D4), const Color(0xFF3B82F6)],
                 decisionChoice: 'approve_idea_a',
+                isReady: isSessionReady, // <-- Pass down
               ),
             ),
             const SizedBox(width: 16),
@@ -99,6 +102,7 @@ class CeoProposalGate extends StatelessWidget {
                 impactColor: const Color(0xFFC084FC),
                 gradientColors: [const Color(0xFF9333EA), const Color(0xFFD946EF)],
                 decisionChoice: 'approve_idea_b',
+                isReady: isSessionReady, // <-- Pass down
               ),
             ),
           ],
@@ -216,6 +220,7 @@ class CeoProposalGate extends StatelessWidget {
     required Color impactColor,
     required List<Color> gradientColors,
     required String decisionChoice,
+    required bool isReady,
   }) {
     final dynamicTitle = (idea['title'] ?? '').toString();
     final dynamicDescription = (idea['summary'] ?? '').toString();
@@ -234,7 +239,7 @@ class CeoProposalGate extends StatelessWidget {
       impactColor: impactColor,
       gradientColors: gradientColors,
       btnText: 'Approve $tag',
-      onApprove: isLoading
+      onApprove: isLoading || !isReady // <-- Disable if loading OR session not ready
           ? null
           : () => onApproveConcept(
                 dynamicTitle,

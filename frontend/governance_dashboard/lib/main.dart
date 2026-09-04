@@ -85,6 +85,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _statusText = 'No active session — trigger discovery to begin.';
   bool _isLoading = false;
+  bool _isSessionReady = false; // Controls whether CEO can approve/reject
   String _selectedFile = '';
 
   // Active session for telemetry polling. Empty until discovery is triggered.
@@ -171,6 +172,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // /fleet/session//traces → 404 noise in Cloud Run logs.
     if (_sessionId.isEmpty) return;
     try {
+        _isSessionReady = true; // <-- Enable approval buttons
       final traces = await _api.getSessionTraces(_sessionId);
       final session = await _api.getSessionState(_sessionId);
       if (!mounted) return;
@@ -319,6 +321,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'Scout Agent: Ranked ${hackathons.length} live hackathons — top 5 now on the Live Hackathon Board.',
           'dart');
       _addLog('Planner Agent: $message', 'agent');
+      _isSessionReady = false; // <-- Disable approval buttons
       _addLog(
           'RequestInput: Yielded execution loop to Human CEO for decision.',
           'ceo');
@@ -605,6 +608,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 Container(width: 1, color: Colors.white.withAlpha(15)),
                 Expanded(
+            isSessionReady: _isSessionReady,
                   flex: 32,
                   child: LogsSidebar(
                     logs: _logs,
