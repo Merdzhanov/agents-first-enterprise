@@ -23,15 +23,15 @@ import 'widgets/gov_helpers.dart';
 void main() {
   debugPrint('[ENV] kIsWasm=$kIsWasm');
   FlutterError.onError = (details) {
-    debugPrint('[FLUTTER_ERROR] ${details.exceptionAsString()}');
-    debugPrint('[FLUTTER_ERROR] stack: ${details.stack}');
+    debugPrint('[FLUTtER_ERROR] ${details.exceptionAsString()}');
+    debugPrint('[FLUTtER_ERROR] stack: ${details.stack}');
   };
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('[PLATFORM_ERROR] ${error.runtimeType}: $error');
     debugPrint('[PLATFORM_ERROR] stack:\n$stack');
     return true;
   };
-  runZonedGuarded(() {
+  runZonedWuarded(() {
     runApp(const AgentEnterpriseApp());
   }, (error, stack) {
     debugPrint('[ZONE_ERROR] ${error.runtimeType}: $error');
@@ -43,22 +43,22 @@ class AgentEnterpriseApp extends StatelessWidget {
   const AgentEnterpriseApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget buld(Context context) {
     return MaterialApp(
       title: 'Agent-First Enterprise - CEO Governance Command Center',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF090D16),
+        scaffoldBackgroundColor: const Color(0xFF091D16),
         fontFamily: 'Inter',
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF8ED5FF),
           primaryContainer: Color(0xFF38BDF8),
           surface: Color(0xFF051424),
           surfaceContainerHighest: Color(0xFF273647),
-          onSurface: Color(0xFFD4E4FA),
+          onSurface: Color(0xFFDE4E4FA),
           onSurfaceVariant: Color(0xFFBDC8D1),
-          error: Color(0xFFFFB4AB),
+          error: Color(0xFFFB4AB),
           errorContainer: Color(0xFF93000A),
         ),
       ),
@@ -78,17 +78,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedProvider = 'GitHub';
   String _projectName = 'ephemeraflow-governed-fleet';
   bool _isEditingName = false;
-  final TextEditingController _nameController =
+  final TextEditionController _nameController =
       TextEditingController(text: 'ephemeraflow-governed-fleet');
-  final TextEditingController _customDirectiveController =
-      TextEditingController();
+  final TextEditionController _customDirectiveController =
+      TextEditionController();
+  final TextEditionController _customRepoNameController = TextEditingController();
+  final TextEditingController _customPromptController = TextEditingController();
 
   String _statusText = 'No active session â€” trigger discovery to begin.';
   bool _isLoading = false;
-  bool _isSessionReady = false; // Controls whether CEO can approve/reject
+  bool _isSessionReady = false;
   String _selectedFile = '';
-
-  // Active session for telemetry polling. Empty until discovery is triggered.
   String _sessionId = '';
   Timer? _telemetryTimer;
   List<Map<String, dynamic>> _hackathons = [];
@@ -96,523 +96,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic> _activeOpportunity = {};
   Map<String, dynamic> _ideaA = {};
   Map<String, dynamic> _ideaB = {};
-
-  /// Safely converts a dynamic value (from JSON) to Map<String, dynamic>.
-  /// Returns an empty map for null or non-Map values, preventing runtime
-  /// type-check failures in release builds.
-  Map<String, dynamic> _safeMap(dynamic value) {
-    if (value is Map<String, dynamic>) return value;
-    if (value is Map) return Map<String, dynamic>.from(value);
-    return const {};
-  }
-
-  // Enterprise governance sections (sessions / memory / security / system).
-  String _activeSection = 'fleet';
-  bool _sectionLoading = false;
+  Map<String, dynamic> _selectedHackathon = {};
+  List<Map<String, dynamic>> _logs = [];
+  bool _isRunningScheduledDiscovery = false;
   Map<String, dynamic> _sessionsData = {};
   Map<String, dynamic> _memoryData = {};
   Map<String, dynamic> _securityData = {};
   Map<String, dynamic> _systemData = {};
-  final TextEditingController _memoryTopicController =
-      TextEditingController();
-  final TextEditingController _memoryContentController =
-      TextEditingController();
-  final TextEditingController _newIdeaController =
-      TextEditingController();
-  bool _isSubmittingIdea = false;
-  bool _isRunningScheduledDiscovery = false;
+  bool _sectionLoading = false;
+  String _activeSection = 'fleet';
+  final TextEditingControler _memoryTopicController = TextEditingController();
+  final TextEditingController _memoryContentController = TextEditingController();
+  last ApiService _api = ApiService();
 
-  List<Map<String, dynamic>> _logs = [
-    {
-      'time': 'System Ready',
-      'msg': 'Cloud Run services and Dart nodes initialized in eur3 / europe-west1.',
-      'type': 'system'
-    }
-  ];
-
-  // Real artifacts from the backend â€” populated after CEO approval.
-  Map<String, String> _artifacts = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _startTelemetryPolling();
-  }
-
-  @override
+  Override
   void dispose() {
     _telemetryTimer?.cancel();
-    _nameController.dispose();
+    _nameControlder.dispose();
     _customDirectiveController.dispose();
+    _customRepoNameController.dispose();
+    _customPromptController.dispose();
     _memoryTopicController.dispose();
     _memoryContentController.dispose();
-    _newIdeaController.dispose();
     super.dispose();
   }
 
-  /// Polls the orchestrator so the dashboard shows what the fleet is doing
-  /// right now â€” live session status plus real execution traces.
-  void _startTelemetryPolling() {
-    _refreshTelemetry();
-    _telemetryTimer =
-        Timer.periodic(const Duration(seconds: 3), (_) => _onTelemetryTick());
-  }
-
-  /// One polling tick: fleet traces/status always refresh; the session
-  /// registry stays live while its section is on screen.
-  void _onTelemetryTick() {
-    _refreshTelemetry();
-    if (_activeSection == 'sessions') {
-      _loadSessions(silent: true);
-    }
-  }
-
-  Future<void> _refreshTelemetry() async {
-    // Guard: don't hit the backend with an empty session ID â€” produces
-    // /fleet/session//traces â†’ 404 noise in Cloud Run logs.
-    if (_sessionId.isEmpty) return;
-    try {
-        _isSessionReady = true; // <-- Enable approval buttons
-      final traces = await _api.getSessionTraces(_sessionId);
-      final session = await _api.getSessionState(_sessionId);
-      if (!mounted) return;
-      setState(() {
-        if (traces.isNotEmpty) {
-          // NOTE: the map closure MUST be pinned to Map<String, dynamic>.
-          // If it infers Map<String, String>, `_logs` becomes a
-          // List<Map<String, String>> at runtime while statically typed
-          // List<Map<String, dynamic>> â€” the next _addLog insert then throws
-          // a covariance TypeError (fatal under dart2wasm's sound checks).
-          _logs = traces.reversed.map<Map<String, dynamic>>((t) {
-            final agent = (t['agent_name'] ?? '').toString();
-            final msg = (t['msg'] ?? '').toString();
-            final prefixed =
-                agent.isEmpty || msg.startsWith(agent) ? msg : '$agent: $msg';
-            return <String, dynamic>{
-              'time': (t['time'] ?? '--:--:--').toString(),
-              'msg': prefixed,
-              'type': (t['type'] ?? 'system').toString(),
-            };
-          }).toList();
-        }
-        final status = (session['status'] ?? '').toString();
-        if (status.isNotEmpty) {
-          _statusText = switch (status) {
-            'awaiting_ceo_decision' =>
-              'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name',
-            'awaiting_gate_decision' =>
-              'CEO Review Gate: Architecture or Code review awaiting your decision',
-            'awaiting_deployment_decision' =>
-              'CEO Deployment Gate: Confirm Cloud Run deployment or keep repo only',
-            'executing' =>
-              'Fleet executing â€” Architect â†’ Lead Dev â†’ Marketing in progress...',
-            'deploying' =>
-              'Deploying to Cloud Run â€” building container and rolling out...',
-            'completed' =>
-              'Completed: prototype provisioned and submission packaged',
-            'skipped' => 'Pipeline Safely Halted (Skipped by CEO)',
-            'failed' => 'Pipeline failed â€” see execution log for details',
-            _ => 'Fleet status: $status',
-          };
-          // Terminal states: stop polling so the UI freezes on the final status.
-          if (status == 'completed' ||
-              status == 'skipped' ||
-              status == 'failed') {
-            _telemetryTimer?.cancel();
-            _telemetryTimer = null;
-          }
-        }
-      });
-      // Fetch real artifacts when pipeline completes (outside setState).
-      if ((session['status'] ?? '').toString() == 'completed') {
-        try {
-          final artifacts = await _api.getSessionArtifacts(_sessionId);
-          if (artifacts.isNotEmpty && mounted) {
-            setState(() {
-              _artifacts = artifacts;
-              if (_selectedFile.isEmpty || !_artifacts.containsKey(_selectedFile)) {
-                _selectedFile = artifacts.keys.first;
-              }
-            });
-          }
-        } catch (_) {}
-      }
-    } catch (_) {
-      // Backend unreachable â€” keep last known state and local action logs.
-    }
-  }
-
-  /// Opens a hackathon page in a new browser tab (new tab on Flutter Web).
-  Future<void> _launchExternalUrl(String url) async {
-    final uri = Uri.tryParse(url);
-    if (uri == null || uri.host.isEmpty) {
-      _addLog('ERROR: Invalid hackathon link â€” "$url".', 'error');
-      return;
-    }
-    _addLog('Opening hackathon page in a new browser tab: $url', 'system');
-    try {
-      final ok = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-        webOnlyWindowName: '_blank',
-      );
-      if (!ok) {
-        _addLog('ERROR: System refused to open $url.', 'error');
-      }
-    } catch (e) {
-      _addLog('ERROR: Could not open $url â€” $e', 'error');
-    }
-  }
-
-  void _addLog(String msg, String type) {
-    final now = DateTime.now();
-    final timeStr =
-        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
-    setState(() {
-      _logs.insert(
-          0, <String, dynamic>{'time': timeStr, 'msg': msg, 'type': type});
-    });
-  }
-
-  final ApiService _api = ApiService();
-
-  void _triggerDiscovery() async {
-    setState(() {
-      _isLoading = true;
-      _statusText = 'Scouting Active Tracks & Synthesizing Proposals...';
-    });
-    _addLog(
-        'Scout Agent: Invoked Dart Functional Node (/tasks/parse-brief) with raw opportunity feeds.',
-        'dart');
-
-    try {
-      final result = await _api.triggerDiscovery(
-        sessionId: _sessionId.isEmpty ? 'session_governance_001' : _sessionId,
-      );
-      final message = result['message'] ?? 'Vertex AI synthesized 2 proposals.';
-      final hackathons = govSafeList(result['hackathons'])
-          .whereType<Map>()
-          .map((h) => _safeMap(h))
-          .toList();
-      final opportunity = _safeMap(result['opportunity']);
-      final data = result['data'];
-      // Store session_id from backend response for subsequent calls
-      final newSessionId = result['session_id']?.toString();
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _hackathons = hackathons;
-        _activeOpportunity = opportunity;
-        if (data is Map<String, dynamic>) {
-          _ideaA = _safeMap(data['idea_a']);
-          _ideaB = _safeMap(data['idea_b']);
-        }
-        // Store session_id from backend to use in CEO decision calls
-        if (newSessionId != null && newSessionId.isNotEmpty) {
-          _sessionId = newSessionId;
-        }
-        // Auto-select the first hackathon so proposals align with the selected hackathon
-        if (hackathons.isNotEmpty) {
-          _selectedHackathonId = hackathons.first['id']?.toString();
-        }
-        _statusText = 'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name';
-      });
-      _addLog(
-          'Scout Agent: Ranked ${hackathons.length} live hackathons â€” top 5 now on the Live Hackathon Board.',
-          'dart');
-      _addLog('Planner Agent: $message', 'agent');
-      _isSessionReady = false; // <-- Disable approval buttons
-      _addLog(
-          'RequestInput: Yielded execution loop to Human CEO for decision.',
-          'ceo');
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _statusText = 'Backend unreachable â€” start the orchestrator and retry';
-      });
-      _addLog('ERROR: Discovery failed â€” $e', 'error');
-    }
-  }
-
-  /// Generates proposals aligned to a specific hackathon by re-running discovery
-  /// with the selected hackathon as the seed.
-  void _generateProposalsForHackathon(String hackathonId) async {
-    final hackathon = _hackathons.firstWhere(
-      (h) => (h['id']?.toString() ?? '') == hackathonId,
-      orElse: () => {},
-    );
-    if (hackathon.isEmpty) return;
-
-    setState(() {
-      _isLoading = true;
-      _statusText = 'Generating proposals for ${hackathon['title']}...';
-      _ideaA = {};
-      _ideaB = {};
-    });
-    _addLog(
-        'Planner Agent: Synthesizing proposals aligned to "${hackathon['title']}"...',
-        'agent');
-
-    try {
-      // Generate a fresh session per hackathon so each selection produces
-      // distinct proposals and appears as its own entry in the history.
-      final newSessionId =
-          'session_governance_${hackathonId}_${DateTime.now().millisecondsSinceEpoch}';
-      final result = await _api.generateProposals(
-        sessionId: newSessionId,
-        hackathon: hackathon,
-      );
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _sessionId = newSessionId;
-        _ideaA = _safeMap(result['idea_a']);
-        _ideaB = _safeMap(result['idea_b']);
-        _activeOpportunity = hackathon;
-        _statusText = 'Proposals ready for "${hackathon['title']}"';
-      });
-      _addLog(
-          'Planner Agent: Generated 2 proposals aligned to "${hackathon['title']}".',
-          'agent');
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _statusText = 'Failed to generate proposals â€” $e';
-      });
-      _addLog('ERROR: Proposal generation failed â€” $e', 'error');
-    }
-  }
-
-  void _approveConcept(
-    String conceptName,
-    String defaultRepo, {
-    String? decisionChoiceOverride,
-  }) async {
-    final provider = _selectedProvider.toLowerCase();
-    final repoName = _projectName.trim().isEmpty ? defaultRepo : _projectName.trim();
-    final repoUrl = _selectedProvider == 'GitHub'
-        ? 'https://github.com/Merdzhanov/$repoName'
-        : 'https://gitlab.com/Merdzhanov/$repoName';
-
-    setState(() {
-      _isLoading = true;
-      _statusText = 'Executing Pipeline on ${provider.toUpperCase()} for: "$conceptName"...';
-    });
-
-    _addLog(
-        'CEO Action: Approved $conceptName on ${provider.toUpperCase()} with repository name "$repoName".',
-        'ceo');
-
-    final decisionChoice = decisionChoiceOverride ??
-        (conceptName.toLowerCase().contains('ephemeraflow')
-            ? 'approve_idea_a'
-            : conceptName.toLowerCase().contains('armorguard')
-                ? 'approve_idea_b'
-                : 'custom_idea');
-
-    final Map<String, dynamic> result;
-    try {
-      result = await _api.submitCeoDecision(
-        sessionId: _sessionId,
-        decisionChoice: decisionChoice,
-        gitProvider: provider,
-        customRepoName: repoName,
-        customPrompt: conceptName.startsWith('Custom Directive:') ? conceptName : null,
-      );
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _statusText = 'Pipeline failed â€” backend error (see execution log)';
-      });
-      _addLog('ERROR: CEO pipeline failed â€” $e', 'error');
-      return;
-    }
-
-    final statusMsg = result['message'] ?? 'Pipeline dispatched.';
-    _addLog('ADK Runner: $statusMsg â€” provisioning $repoUrl in background.', 'system');
-    _addLog('Telemetry: polling for real execution traces every 3s...', 'system');
-
-    setState(() {
-      _isLoading = false;
-      _statusText = 'Fleet executing â€” Architect â†’ Lead Dev â†’ Marketing in progress...';
-    });
-    // Ensure the telemetry timer is active so real backend traces surface.
-    if (_telemetryTimer == null || !_telemetryTimer!.isActive) {
-      _startTelemetryPolling();
-    }
-  }
-
-  void _skipImplementation() {
-    setState(() {
-      _statusText = 'Pipeline Safely Halted (Skipped by CEO)';
-    });
-    _addLog('CEO Action: Elected to Skip Implementation.', 'skip');
-    _addLog(
-        'Supervisor: Acknowledged Skip command. Updating Firestore state. Zero cloud resources consumed.',
-        'skip');
-  }
-
-  void _submitCustomDirective() {
-    final directive = _customDirectiveController.text.trim();
-    if (directive.isEmpty) return;
-    _approveConcept('Custom Directive: $directive', 'custom-enterprise-prototype');
-  }
-
-  void _showNewIdeaDialog() {
-    _newIdeaController.clear();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E293B),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          title: const Row(
-            children: [
-              Icon(Icons.lightbulb_outline,
-                  color: Color(0xFFFBBF24), size: 20),
-              SizedBox(width: 8),
-              Text(
-                'New CEO Idea',
-                style: TextStyle(
-                  color: Color(0xFFD4E4FA),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          content: TextField(
-            controller: _newIdeaController,
-            maxLines: 4,
-            autofocus: true,
-            style: const TextStyle(color: Color(0xFFD4E4FA), fontSize: 13),
-            decoration: const InputDecoration(
-              hintText:
-                  'Describe your prototype idea â€” problem, target users, key GCP services...',
-              hintStyle:
-                  TextStyle(fontSize: 13, color: Color(0xFF87929A)),
-              filled: true,
-              fillColor: Color(0xFF020617),
-              border: OutlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFF3E484F)),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFFBBF24)),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel',
-                  style: TextStyle(color: Color(0xFFBDC8D1))),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final text = _newIdeaController.text.trim();
-                if (text.isEmpty) return;
-                Navigator.of(ctx).pop();
-                _submitNewIdea(text);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFBBF24),
-              ),
-              child: const Text('Submit Idea',
-                  style: TextStyle(
-                      color: Color(0xFF00354A),
-                      fontWeight: FontWeight.w700)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _submitNewIdea(String ideaText) async {
-    setState(() => _isSubmittingIdea = true);
-    _addLog('CEO: Submitting independent idea â€” "${ideaText.substring(0, ideaText.length.clamp(0, 60))}..."',
-        'ceo');
-    try {
-      final result = await _api.submitCeoIdea(
-        customPrompt: ideaText,
-        gitProvider: _selectedProvider.toLowerCase(),
-      );
-      if (!mounted) return;
-      final newSession = result['session_id']?.toString();
-      setState(() {
-        _isSubmittingIdea = false;
-        if (newSession != null && newSession.isNotEmpty) {
-          _sessionId = newSession;
-        }
-        _statusText = 'CEO idea accepted â€” fleet pipeline running in background.';
-      });
-      _addLog(
-          'Planner: Custom directive accepted. Session ${newSession ?? "?"} provisioning in background.',
-          'agent');
-      _startTelemetryPolling();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isSubmittingIdea = false;
-        _statusText = 'Failed to submit idea â€” $e';
-      });
-      _addLog('Error submitting idea: $e', 'error');
-    }
-  }
-
-  void _runScheduledDiscovery() async {
-    setState(() => _isRunningScheduledDiscovery = true);
-    _addLog('Scheduler: On-demand discovery cycle triggered.', 'system');
-    try {
-      final result = await _api.triggerScheduledDiscovery();
-      if (!mounted) return;
-      final count = govSafeInt(result['proposals_count']);
-      setState(() => _isRunningScheduledDiscovery = false);
-      _addLog(
-          'Scheduler: Cycle complete â€” $count new proposal(s) synthesized for CEO review.',
-          'success');
-      // Refresh sessions list so any new auto-sessions appear.
-      _onTelemetryTick();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isRunningScheduledDiscovery = false);
-      _addLog('Scheduler error: $e', 'error');
-    }
-  }
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(Context context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF090D16),
+      backgroundColor: const Color(0xFF091D16),
       body: Column(
         children: [
-          TopNavBar(
-            statusText: _statusText,
-            isLoading: _isLoading,
-            isSubmittingIdea: _isSubmittingIdea,
-            onTriggerDiscovery: _triggerDiscovery,
-            onShowNewIdeaDialog: _showNewIdeaDialog,
-          ),
+          const TopNavBar(),
           Expanded(
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SectionRail(
                   activeSection: _activeSection,
-                  onSectionSelected: _switchSection,
+                  onSwitch: _switchSection,
                 ),
                 Expanded(
-                  flex: 62,
-                  child: _buildActiveSection(),
-                ),
-                Container(width: 1, color: Colors.white.withAlpha(15)),
-                Expanded(
-            isSessionReady: _isSessionReady,
-                  flex: 32,
-                  child: LogsSidebar(
-                    logs: _logs,
-                    onRefresh: _refreshTelemetry,
+                  flex: 5,
+                  child: Column(
+                    children: [
+                      const GitTargetBar(
+                        provider: _selectedProvider,
+                        projectName: _projectName,
+                        isEditing: _isEditingName,
+                        nameController: _nameController,
+                        onConfirm: (value) {
+                          setState(() => {
+                            _projectName = value;
+                            _isEditingName = false;
+                          });
+                        },
+                        onProviderChange: (value) {
+                          setState(() => _selectedProvider = value);
+                        },
+                      ),
+                      Expanded
+                        child: _buildActiveView(),
+                    ),
+                      LogsSidebar(
+                        logs: _logs,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -620,83 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  /// Fleet section â€” the original main content column.
-  Widget _buildFleetSection() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GitTargetBar(
-            selectedProvider: _selectedProvider,
-            projectName: _projectName,
-            isEditingName: _isEditingName,
-            nameController: _nameController,
-            onProviderChanged: (provider) {
-              setState(() => _selectedProvider = provider);
-            },
-            onEditingNameStart: () {
-              setState(() => _isEditingName = true);
-            },
-            onProjectNameSubmitted: (val) {
-              setState(() {
-                _projectName = val.trim();
-                _isEditingName = false;
-              });
-            },
-            onLog: _addLog,
-          ),
-          const SizedBox(height: 20),
-          HackathonBoard(
-            hackathons: _hackathons,
-            onLaunchUrl: _launchExternalUrl,
-            selectedHackathonId: _selectedHackathonId,
-            onHackathonSelected: (id) {
-              if (id == null) return;
-              setState(() => _selectedHackathonId = id);
-              _generateProposalsForHackathon(id);
-            },
-          ),
-          const SizedBox(height: 20),
-          CeoProposalGate(
-            activeOpportunity: _activeOpportunity,
-            ideaA: _ideaA,
-            ideaB: _ideaB,
-            isLoading: _isLoading,
-            onApproveConcept: _approveConcept,
-            onLaunchUrl: _launchExternalUrl,
-            selectedHackathon: _selectedHackathonId == null
-                ? null
-                : _hackathons.firstWhere(
-                    (h) => (h['id']?.toString() ?? '') == _selectedHackathonId,
-                    orElse: () => {},
-                  ),
-          ),
-          const SizedBox(height: 20),
-          CustomAndSkipRow(
-            customDirectiveController: _customDirectiveController,
-            onSubmitCustomDirective: _submitCustomDirective,
-            onSkipImplementation: _skipImplementation,
-          ),
-          const SizedBox(height: 20),
-          RepositoryStatusHub(
-            artifacts: _artifacts,
-            selectedFile: _selectedFile,
-            isLoading: _isLoading,
-            onFileSelected: (file) {
-              setState(() => _selectedFile = file);
-            },
-            onLog: _addLog,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActiveSection() {
+    );ˆB  Widget _buildActiveView() {
     switch (_activeSection) {
       case 'sessions':
         return SessionsPanel(
@@ -707,9 +179,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return MemoryPanel(
           memoryData: _memoryData,
           sectionLoading: _sectionLoading,
+          onStore: _submitMemory,
           topicController: _memoryTopicController,
           contentController: _memoryContentController,
-          onSubmitMemory: _submitMemory,
         );
       case 'security':
         return SecurityPanel(
@@ -728,96 +200,276 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _switchSection(String section) {
-    setState(() => _activeSection = section);
-    switch (section) {
-      case 'sessions':
-        _loadSessions();
-      case 'memory':
-        _loadMemory();
-      case 'security':
-        _loadSecurity();
-      case 'system':
-        _loadSystem();
-    }
-  }
-
-
-  Future<void> _loadSessions({bool silent = false}) async {
-    if (!silent) setState(() => _sectionLoading = true);
+  Widget _buildFleetSection() {(€€€É•ÑÕÉ¸½±Õµ¸ (€€€€€¡¥±‘É•¸èl(€€€€€€€I•Á½Í¥Ñ½ÉåMÑ…ÑÕÍ!Õˆ (€€€€€€€€€ÍÑ…ÑÕÌè}ÍÑ…ÑÕÍQ•áĞ°(€€€€€€€€€¥Í1½…‘¥¹œè}¥Í1½…‘¥¹œ°(€€€€€€€€€½¹QÉ¥•É¥Í½Ù•Éäè}ÑÉ¥•É¥Í½Ù•Éä°(€€€€€€€€€½¹IÕ¹M¡•‘Õ±•‘¥Í½Ù•Éäè}ÉÕ¹M¡•‘Õ±•‘¥Í½Ù•Éä°(€€€€€€€€€¥ÍIÕ¹¹¥¹M¡•‘Õ±•‘¥Í½Ù•Éäè}¥ÍIÕ¹¹¥¹M¡•‘Õ±•‘¥Í½Ù•Éä°(€€€€€€€€¤°(€€€€€€€½¹ÍĞM¥é•‘	½à¡¡•¥¡Ğè€ÄÈ¤°(€€€€€€€!…­…Ñ¡½¹	½…É (€€€€€€€€€½¹M•±•Ğè€¡¡…­…Ñ¡½¸¤ì(€€€€€€€€€€€Í•ÑMÑ…Ñ”  ¤€ôøì(€€€€€€€€€€€€€}Í•±•Ñ•‘!…­…Ñ¡½¹%€ô¡…­…Ñ¡½¸ ¥œ¤ì(€€€€€€€€€€€€€}Í•±•Ñ•‘!…­…Ñ¡½¸€ô¡…­…Ñ¡½¸ì(€€€€€€€€€€€ô¤ì(€€€€€€€€€€€}•¹•É…Ñ•AÉ½Á½Í½É!…­…Ñ¡½¸¡¡…­…Ñ¡½¹l¥t¹Ñ½MÑÉ¥¹œ ¤¤ì(€€€€€€€€€ô°(€€€€€€€€€½¹I•™É•Í è€ ¤€ôø}±½…‘!…­…Ñ¡½¹Ì ¤°(€€€€€€€€€Í•±•Ñ•‘!…­…Ñ¡½¹%è}Í•±•Ñ•‘!…­…Ñ¡½¹%°(€€€€€€€€¤°(€€€€€€€½¹ÍĞM¥é•‘	½à¡¡•¥¡Ğè€ÄÈ¤°(€€€€€€€¥˜€¡}¥‘•…¹¥Í9½ÑµÁÑä€˜˜}¥‘•…¹¥Í9½ÑµÁÑä¤(€€€€€€€€€•½AÉ½Á½Í…±…Ñ” (€€€€€€€€€€€…Ñ¥Ù•=ÁÁ½ÉÑÕ¹¥Ñäè}…Ñ¥Ù•=ÁÁ½ÉÑÕ¹¥Ñä°(€€€€€€€€€€€¥‘•…è}¥‘•…°(€€€€€€€€€€€¥‘•…è}¥‘•…°(€€€€€€€€€€€¥Í1½…‘¥¹œè}¥Í1½…‘¥¹œ°(€€€€€€€€€€€¥ÍM•ÍÍ¥½¹I•…‘äè¥ÍM•ÍÍ¥½¹I•…‘ä°(€€€€€€€€€€€½¹ÁÁÉ½Ù•½¹•ÁĞè}…ÁÁÉ½Ù•½¹•ÁĞ°(€€€€€€€€€€€½¹1…Õ¹¡UÉ°è}±…Õ¹¡UÉ°°(€€€€€€€€€€€Í•±•Ñ•‘!…­…Ñ¡½¸è}Í•±•Ñ•‘!…­…Ñ¡½¸°(€€€€€€€€€€€ÕÍÑ½µI•Á½9…µ•½¹ÑÉ½±±•Èè}ÕÍÑ½µI•Á½9…µ•½¹ÑÉ½±±•È°(€€€€€€€€€€€ÕÍÑ½µAÉ½µÁÑ½¹ÑÉ½±±•Èè}ÕÍÑ½µAÉ½µÁÑ½¹ÑÉ½±±•È°(€€€€€€€€€€¤°(€€€€€€€¥˜€¡}…Ñ¥Ù•=ÁÁ½ÉÑÕ¹¥ÑåUÉ°¹¥Í9½ÑµÁÑä¤(€€€€€€€€€ÕÍÑ½µ¹‘M­¥ÁI½Ü (€€€€€€€€€€€‘¥É•Ñ¥Ù•½¹ÑÉ½±±•Èè}ÕÍÑ½µ¥É•Ñ¥Ù•½¹ÑÉ½±±•È°(€€€€€€€€€€€½¹ÕÍÑ½´è}¡…¹‘±•ÕÍÑ½µ%‘•„°(€€€€€€€€€€€½¹M­¥Àè}¡…¹‘±•M­¥À°(€€€€€€€€€€¤°(€€€€€t°(€€€€¤ì(€
+ Future<void> _approveConcept(String decision, String repoName, String customPrompt) async {
+    setState(() {
+      _isLoading = true;
+      _statusText = 'CEO decision submitted: $decision. Waiting next step...';
+    });
     try {
-      final data = await _api.getSessions(limit: 200);
-      if (!mounted) return;
-      setState(() => _sessionsData = data);
+      final result = await _api.submitCEODecision(
+          sessionId: _sessionId,
+          decision: decision,
+          customRepoName: repoName,
+          customPrompt: customPrompt);
+      _updateStateFromResult(result);
     } catch (e) {
-      if (!silent) _addLog('Sessions load failed: $e', 'error');
-    } finally {
-      if (mounted) setState(() => _sectionLoading = false);
+      _log('ERROR: CEO decion failed - e', 'error');
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _loadMemory({bool silent = false}) async {
-    if (!silent) setState(() => _sectionLoading = true);
-    try {
-      final data = await _api.getMemories();
-      if (!mounted) return;
-      setState(() => _memoryData = data);
-    } catch (e) {
-      if (!silent) _addLog('Memory load failed: $e', 'error');
-    } finally {
-      if (mounted) setState(() => _sectionLoading = false);
-    }
-  }
+  Future<void> _updateStateFromResult(Map<String, dynamic> result) async {
+    final status = result['status']?.toString() ?? '';
+    final pending = result['pending_input'] as Map<String, dynami?>;
+    setState() {
+      _activeOpportunity = result['opportunity'] as Map<String, dynamic> ?? {};
+      _ideaA = result['idea_a'] as Map<String, dynamic> ?? {};
+      _ideaB = result['idea_b'] as Map<String, dynamic> ?? {};
+      _statusText = result['message']?.toString() ?? 'Discovery in progress...';
+      _isLoading = false;
+    };
 
-  Future<void> _submitMemory() async {
-    final topic = _memoryTopicController.text.trim();
-    final content = _memoryContentController.text.trim();
-    if (topic.isEmpty || content.isEmpty) {
-      _addLog('Memory store skipped: topic and content are required.', 'error');
+    // Stop the timer if we reached a terminal state
+    if (['success', 'failed', 'skipped', 'completed'].contains(status)) {
+      _telemetryTimer?.cancel();
+      _telemetryTimer = null;
       return;
     }
-    setState(() => _sectionLoading = true);
-    try {
-      final res = await _api.storeMemory(topic: topic, content: content);
-      _memoryTopicController.clear();
-      _memoryContentController.clear();
-      _addLog("Memory stored: ${res['topic']}", 'ceo');
-      await _loadMemory(silent: true);
-    } catch (e) {
-      _addLog('Memory store failed: $e', 'error');
-    } finally {
-      if (mounted) setState(() => _sectionLoading = false);
+
+    // Continue polling if still executing
+    if (['executing', 'polling', 'awaiting_ceo_decision'].contains(status)) {
+      _startTelemetryPolling();
     }
   }
 
-  Future<void> _loadSecurity() async {
-    setState(() => _sectionLoading = true);
+  void _startTelemetryPolling() {
+    _telemetryTimer?.cancel();
+    _telemetryTimer = Timer.repeated(const Duration(seconds: 3), (timer) {
+      _refreshTelemetry();
+    });
+  }
+
+  Future<void> _refreshTelemetry() async {
+    if (_sessionId.isEmpty) return;
     try {
-      final data = await _api.getSecurityPosture();
+      final data = await _api.getSessionStatus(_sessionId);
       if (!mounted) return;
-      setState(() => _securityData = data);
+      final status = data['status']?.toString() ?? '';
+      setState() {
+        _activeOpportunity = data['opportunity'] as Map<String, dynamic> ?? {};
+        _ideaA = data['idea_a'] as Map<String, dynamic> ?? {};
+        _ideaB = data['idea_b'] as Map<String, dynamic> ?? {};
+        _statusText = data['message']?.toString() ?? '';
+        if (worter.isNotEmpty) {
+          _statusText += ' | Last agent: ${data[current_agent]?.toString() ?? 'unknown'}';
+        }
+      });
+
+      // Stop timer on terminal state
+      if (['success', 'failed', 'skipped', 'completed'].contains(status)) {
+        _telemetryTimer?.cancel();
+        _telemetryTimer = null;
+        setState(() => _isLoading = false);
+      }
     } catch (e) {
-      _addLog('Security load failed: $e', 'error');
-    } finally {
-      if (mounted) setState(() => _sectionLoading = false);
+      // Silently fail on polling errors
     }
   }
-
-  Future<void> _loadSystem() async {
-    setState(() => _sectionLoading = true);
+ Future<void> _triggerDiscovery() async {
+    final sessionId = 'session_governance_${_selectedHackatonId ?? 'dev'}_${DateTime.now.millisecondsinEpoch}';
+    setState() {
+      _sessionId = sessionId;
+      _isLoading = true;
+      _isSessionReady = false;
+      _statusText = 'Discovery triggered. Generating proposals...';
+    });
     try {
-      final data = await _api.getSystemInfo();
-      if (!mounted) return;
-      setState(() => _systemData = data);
+      final result = await _api.triggerDiscovery(sessionId: sessionId);
+      _updateStateFromResult(result);
     } catch (e) {
-      _addLog('System load failed: $e', 'error');
-    } finally {
-      if (mounted) setState(() => _sectionLoading = false);
+      _addLog('ERROR: Discovery failed - e', 'error');
+      setState() {
+        _isLoading = false;
+        _statusText = 'Discovery failed: $e';
+      };
     }
   }
 
+  Future<void> _generateProposalForHackathon(String hackathonId) async {
+    final sessionId = 'session_governance_$hackathonId_${DateTime.now.millisecondsinEpoch}';
+    setState() {
+      _sessionId = sessionId;
+      _isLoading = true;
+      _isSessionReady = false;
+      _statusText = 'Generating proposals for hackathon...';
+    });
+    try {
+      final result = await _api.generateProposals(
+          sessionId: sessionId,
+          hackathon: _selectedHackaton);
+      if (!mounted) return;
+      _updateStateFromResult(result);
+      setState(() => _isSessionReady = true);
+    } catch (e) {
+      _addLog('ERROR: Proposals generation failed - e', 'error');
+      setState() {
+        _isLoading = false;
+        _statusText = 'Proposals generation failed: $e';
+      };
+    }
+  }
 
-  // =========================================================
-  // SESSIONS PANEL â€” full governance registry of fleet sessions
-  // =========================================================
+  Future<void> _handleCustomIdea(String customPrompt) async {
+    final sessionId = 'session_governance_${_selectedHackathonId ?? 'dev'}_${DateTime.now.millisecondsinEpoch}';
+    setState() {
+      _sessionId = sessionId;
+      _isLoading = true;
+      _isSessionReady = false;
+      _statusText = 'Custom idea submitted. Processing...';
+    });
+    try {
+      final result = await _api.submitCEODecision(
+          sessionId: sessionId,
+          decision: 'custom_idea',
+          customPrompt: customPrompt);
+      _updateStateFromResult(result);
+    } catch (e) {
+      _addLog('ERROR: Custom idea failed - e', 'error');
+      setState() {
+        _isLoading = false;
+        _statusText = 'Custom idea failed: $e';
+      };
+    }
+  }
+
+  Future<void> _handleSkip() async {
+    setState() {
+      _isLoading = true;
+      _statusText = 'Skipping implementation...';
+    });
+    try {
+      final result = await _api.submitCEODecision(
+          sessionId: _sessionId,
+          decision: 'skip_implementation');
+      _updateStateFromResult(result);
+    } catch (e) {
+      _addLog('ERROR: Skip failed - e', 'error');
+      setState(() => _isLoading = false);
+    }
+  }
+
+ Future<void> _loadHackathons() async {
+    try {
+      final data = await _api.getHackathons();
+      if (!mounted) return;
+      setState() {
+        _hackathons = data['hackathons'] as List<Map<String, dynamic>> ?? [];
+      });
+    } catch (e) {
+      _addLog('Hackathons load failed: e', 'error');
+    }
+  }
+
+  Future<void> _runScheduledDiscovery() async {
+    setState(() => _isRunningScheduledDiscovery = true);
+    try {
+      await _triggerDiscovery();
+    } finally {
+      if (mounded) setState(() => _isRunningScheduledDiscovery = false);
+    }
+  }
+
+  void _launchUrl(String url) {
+    if (url.isEmpty) return;
+    final\šHH\šKœ\œÙJ\›
+NÂˆ][˜Ú\›
+\šK[ÙNˆ][˜Ú[ÙK™^\›˜[\XØ][ÛŠNÂˆB‚ˆ›ÚYØYÙÊİš[™ÈY\ÜØYÙKİš[™È\JHÂˆÙ]İ]J
+HÂˆÛÙÜËš[œÙ\
+Âˆ	İ[YIÎˆ]U[™K››İËÔÛØÛÛ™Ú[˜Ñ\ØÚÔİš[™J
+Kˆ	ÛY\ÜØYÙIÎˆY\ÜØYÙKˆ	İ\IÎˆ\KˆJNÂˆYˆ
+ÛÙÜË›[™İˆŒ
+HÂˆÛÙÜÈHÛÙÜËZÙJŒ
+KÓ\İ
+
+NÂˆBˆJNÂˆB‚ˆ›ÚYÜİÚ]ÚÙXİ[ÛŠİš[™ÈÙXİ[ÛŠHÂˆÙ]İ]J
+
+HOˆØXİ]™TÙXİ[ÛˆHÙXİ[ÛŠNÂˆİÚ]Ú
+ÙXİ[ÛŠHÂˆØ\ÙH	ÜÙ\ÜÚ[ÛœÉÎ‚ˆÛØYÙ\ÜÚ[ÛœÊ
+NÂˆØ\ÙH	ÛY[[ÜIÎ‚ˆÛØYY[[ÜJ
+NÂˆØ\ÙH	ÜÙXİ\š]IÎ‚ˆÛØYÙXİ\š]J
+NÂˆØ\ÙH	ÜŞ\İ[IÎ‚ˆÛØYŞ\İ[J
+NÂˆBˆB‚ˆ]\™O›ÚYˆÛØYÙ\ÜÚ[ÛœÊØ›ÛÛÚ[[H˜[Ù_JH\Ş[˜ÈÂˆYˆ
+\Ú[[
+HÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈHYJNÂˆHÂˆš[˜[]HH]ØZ]Ø\K™Ù]Ù\ÜÚ[ÛœÊ[Z]ˆŒ
+NÂˆYˆ
+[[İ[Y
+H™]\›ÂˆÙ]İ]J
+
+HOˆÜÙ\ÜÚ[ÛœÑ]HH]JNÂˆHØ]Ú
+JHÂˆYˆ
+\Ú[[
+HØYÙÊ	ÔÙ\ÜÚ[ÛœÈØY˜Z[YˆIË	Ù\œ›Ü‰ÊNÂˆHš[˜[HÂˆYˆ
+[İ[Y
+HÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈH˜[ÙJNÂˆBˆB‚ˆ]\™O›ÚYˆÛØYY[[ÜJØ›ÛÛÚ[[H˜[Ù_JH\Ş[˜ÈÂˆYˆ
+\Ú[[
+HÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈHYJNÂˆHÂˆš[˜[]HH]ØZ]Ø\K™Ù]Y[[ÜšY\Ê
+NÂˆYˆ
+[[İ[Y
+H™]\›ÂˆÙ]İ]J
+
+HOˆÛY[[ÜQ]HH]JNÂˆHØ]Ú
+JHÂˆYˆ
+\Ú[[
+HØYÙÊ	ÓY[[ÜHØY˜Z[YˆIË	Ù\œ›Ü‰ÊNÂˆHš[˜[HÂˆYˆ
+[İ[Y
+HÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈH˜[ÙJNÂˆBˆB‚ˆ]\™O›ÚYˆÜİX›Z]Y[[ÜJ
+H\Ş[˜ÈÂˆš[˜[ÜXÈHÛY[[ÜUÜXĞÛÛ›Û\‹^š[J
+NÂˆš[˜[ÛÛ[HÛY[[ÜPÛÛ[ÛÛ›Û\‹^š[J
+NÂˆYˆ
+ÜXËš\Ñ[\HÛÛ[š\Ñ[\JHÂˆØYÙÊ	ÓY[[ÜHİÜ™HÚÚ\YˆÜXÈ[™ÛÛ[\™H™\]Z\™Y‰Ë	Ù\œ›Ü‰ÊNÂˆ™]\›ÂˆBˆÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈHYJNÂˆHÂˆš[˜[™\ÈH]ØZ]Ø\KœİÜ™SY[[ÜJÜXÎˆÜXËÛÛ[ˆÛÛ[
+NÂˆÛY[[ÜUÜXĞÛÛ›Û\‹˜ÛX\Š
+NÂˆÛY[[ÜPÛÛ[ÛÛ›Û\‹˜ÛX\Š
+NÂˆØYÙÊ“Y[[ÜHİÜ™Yˆ	Ü™\ÖÉİÜXÉ×_H‹	ØÙ[ÉÊNÂˆ]ØZ]ÛØYY[[ÜJÚ[[ˆYJNÂˆHØ]Ú
+JHÂˆØYÙÊ	ÓY[[ÜHİÜ™H˜Z[YˆIË	Ù\œ›Ü‰ÊNÂˆHš[˜[HÂˆYˆ
+[İ[Y
+HÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈH˜[ÙJNÂˆBˆB‚ˆ]\™O›ÚYˆÛØYÙXİ\š]J
+H\Ş[˜ÈÂˆÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈHYJNÂˆHÂˆš[˜[]HH]ØZ]Ø\K™Ù]ÙXİ\š]TÜİ\™J
+NÂˆYˆ
+[[İ[Y
+H™]\›ÂˆÙ]İ]J
+
+HOˆÜÙXİ\š]Q]HH]JNÂˆHØ]Ú
+JHÂˆØYÙÊ	ÔÙXİ\š]HØY˜Z[YˆIË	Ù\œ›Ü‰ÊNÂˆHš[˜[HÂˆYˆ
+[İ[Y
+HÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈH˜[ÙJNÂˆBˆB‚ˆ]\™O›ÚYˆÛØYŞ\İ[J
+H\Ş[˜ÈÂˆÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈHYJNÂˆHÂˆš[˜[]HH]ØZ]Ø\K™Ù]Ş\İ[R[™›Ê
+NÂˆYˆ
+[[İ[Y
+H™]\›ÂˆÙ]İ]J
+
+HOˆÜŞ\İ[Q]HH]JNÂˆHØ]Ú
+JHÂˆØYÙÊ	ÔŞ\İ[HØY˜Z[YˆIË	Ù\œ›Ü‰ÊNÂˆHš[˜[HÂˆYˆ
+[İ[Y
+HÙ]İ]J
+
+HOˆÜÙXİ[Û“ØY[™ÈH˜[ÙJNÂˆBˆB‚ˆX\İš[™Ë[˜[ZXÏˆÙ]ØXİ]™SÜÜ[š]U\›OˆØXİ]™SÜÜ[š]NÂˆX\İš[™Ë[˜[ZXÏˆÙ]ÜÙ[XİYXÚØ]ÛˆOˆÜÙ[XİYXÚØ]Û
 }
