@@ -1,5 +1,20 @@
 steps:
   # ==========================================
+  # DIAGNOSTICS: Check the Git commit
+  # ==========================================
+  - name: 'gcr.io/cloud-builders/git'
+    id: 'diagnose-commit'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "========================================"
+        echo "💡 DIAGNOSTIC: CHECKING GIT COMMIT"
+        echo "========================================"
+        git log -n 5 --oneline
+        echo "========================================"
+
+  # ==========================================
   # SERVICE 1: ORCHESTRATOR (Python)
   # ==========================================
   # 1. Build the Python Docker image
