@@ -8,6 +8,20 @@ from ..llm import VertexGeminiClient
 from ..tools import Handoff, RequestInput, ToolContext, execute_dart_task, propose_ideas_to_ceo
 from .base import AgentResult
 
+def _clean_github_description(description: str) -> str:
+    """Strips control chars and truncates for GitHub API compatibility."""
+    if not description:
+        return ""
+    # 1. Replace control characters (newlines, tabs, etc.) with a space.
+    cleaned = re.sub(r'[\x00-\x1F\x7F-\x9F]', ' ', description)
+    # 2. Collapse multiple spaces into one and strip leading/trailing space.
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    # 3. Truncate to a maximum of 350 characters to be safe.
+    if len(cleaned) > 350:
+        return cleaned[:347] + "..."
+    return cleaned
+
+
 
 class PlannerAgent:
     """Synthesizes 2 competitive prototype ideas via Vertex AI, triggers CEO Decision Gate."""
@@ -82,11 +96,14 @@ class PlannerAgent:
         selected_idea["git_provider"] = normalized_provider
         context.state["selected_idea"] = selected_idea
 
+        # Clean the description for GitHub API compatibility before provisioning
+        cleaned_description = _clean_github_description(selected_idea.get("summary", "Autonomous prototype"))
+
         # Provision repository via Dart Node
         repo_payload = {
             "repo_name": final_repo_name,
             "provider": normalized_provider,
-            "description": selected_idea.get("summary", "Autonomous prototype"),
+            "description": cleaned_description,
             "readme_content": (
                 f"# {selected_idea.get('title')}\n\n"
                 f"{selected_idea.get('summary')}\n\n"
