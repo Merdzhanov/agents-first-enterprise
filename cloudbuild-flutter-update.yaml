@@ -1,0 +1,22 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  id: 'Pull latest Flutter image'
+  args: ['pull', 'ghcr.io/cirruslabs/flutter:stable']
+
+- name: 'gcr.io/cloud-builders/docker'
+  id: 'Tag image for Artifact Registry'
+  args: [
+    'tag',
+    'ghcr.io/cirruslabs/flutter:stable',
+    'europe-west1-docker.pkg.dev/agents-first-enterprise-506916/ci-images/flutter:stable'
+  ]
+
+- name: 'gcr.io/cloud-builders/docker'
+  id: 'Push image to Artifact Registry'
+  args: [
+    'push',
+    'europe-west1-docker.pkg.dev/agents-first-enterprise-506916/ci-images/flutter:stable'
+  ]
+
+images:
+- 'europe-west1-docker.pkg.dev/agents-first-enterprise-506916/ci-images/flutter:stable'
