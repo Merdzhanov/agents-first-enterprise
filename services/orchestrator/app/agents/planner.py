@@ -116,11 +116,34 @@ class PlannerAgent:
         dart_repo_result = execute_dart_task("tasks/provision-repo", repo_payload)
         repo_status = str(dart_repo_result.get("status", ""))
         if repo_status != "provisioned" or not dart_repo_result.get("web_url"):
-            err_msg = (
-                f"Repository provisioning FAILED for '{final_repo_name}' on "
-                f"{normalized_provider.upper()}: {dart_repo_result.get('message', repo_status)}"
-            )
-            raise RuntimeError(err_msg)
+            raw_message = str(dart_repo_result.get("message", repo_status))
+            # Idempotency: if the repository already exists (e.g. from a previous
+            # run), adopt it instead of failing — the workflow can push to an
+            # existing repo just fine.
+            if "already exists" in raw_message.lower():
+                SESSION_DB.append_trace(
+                    context.session_id,
+                    self.name,
+                    "warning",
+                    f"Repository '{final_repo_name}' already exists — adopting existing repo.",
+                )
+                dart_repo_result = {
+                    "status": "provisioned",
+                    "repo_name": final_repo_name,
+                    "provider": normalized_provider,
+                    "web_url": (
+                        f"https://github.com/Merdzhanov/{final_repo_name}"
+                        if normalized_provider == "github"
+                        else f"https://gitlab.com/Merdzhanov/{final_repo_name}"
+                    ),
+                    "message": "Adopted pre-existing repository.",
+                }
+            else:
+                err_msg = (
+                    f"Repository provisioning FAILED for '{final_repo_name}' on "
+                    f"{normalized_provider.upper()}: {raw_message}"
+                )
+                raise RuntimeError(err_msg)
         context.state["git_repo"] = dart_repo_result
         context.state["gitlab_repo"] = dart_repo_result
 
