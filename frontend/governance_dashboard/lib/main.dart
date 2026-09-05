@@ -660,13 +660,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Fleet section — chat on top, git controls below.
   Widget _buildFleetSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Chat conversation at the top — takes available space.
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 480,
             child: FleetChat(
               messages: _logs,
               pendingGate: _pendingHitlData,
@@ -675,79 +675,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onSend: _handleChatSend,
             ),
           ),
-        ),
-        // Git controls below the chat.
-        SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GitTargetBar(
-                selectedProvider: _selectedProvider,
-                projectName: _projectName,
-                isEditingName: _isEditingName,
-                nameController: _nameController,
-                onProviderChanged: (provider) {
-                  setState(() => _selectedProvider = provider);
-                },
-                onEditingNameStart: () {
-                  setState(() => _isEditingName = true);
-                },
-                onProjectNameSubmitted: (val) {
-                  setState(() {
-                    _projectName = val.trim();
-                    _isEditingName = false;
-                  });
-                },
-                onLog: _addLog,
-              ),
-              const SizedBox(height: 20),
-              HackathonBoard(
-                hackathons: _hackathons,
-                onLaunchUrl: _launchExternalUrl,
-                selectedHackathonId: _selectedHackathonId,
-                onHackathonSelected: (id) {
-                  if (id == null) return;
-                  setState(() => _selectedHackathonId = id);
-                  _generateProposalsForHackathon(id);
-                },
-              ),
-              const SizedBox(height: 20),
-              CeoProposalGate(
-                activeOpportunity: _activeOpportunity,
-                ideaA: _ideaA,
-                ideaB: _ideaB,
-                isLoading: _isLoading,
-                isSessionReady: _isSessionReady,
-                onApproveConcept: _approveConcept,
-                onLaunchUrl: _launchExternalUrl,
-                selectedHackathon: _selectedHackathonId == null
-                    ? null
-                    : _hackathons.firstWhere(
-                        (h) => (h['id']?.toString() ?? '') == _selectedHackathonId,
-                        orElse: () => {},
-                      ),
-              ),
-              const SizedBox(height: 20),
-              CustomAndSkipRow(
-                customDirectiveController: _customDirectiveController,
-                onSubmitCustomDirective: _submitCustomDirective,
-                onSkipImplementation: _skipImplementation,
-              ),
-              const SizedBox(height: 20),
-              RepositoryStatusHub(
-                artifacts: _artifacts,
-                selectedFile: _selectedFile,
-                isLoading: _isLoading,
-                onFileSelected: (file) {
-                  setState(() => _selectedFile = file);
-                },
-                onLog: _addLog,
-              ),
-            ],
+          const SizedBox(height: 24),
+          GitTargetBar(
+            selectedProvider: _selectedProvider,
+            projectName: _projectName,
+            isEditingName: _isEditingName,
+            nameController: _nameController,
+            onProviderChanged: (provider) {
+              setState(() => _selectedProvider = provider);
+            },
+            onEditingNameStart: () {
+              setState(() => _isEditingName = true);
+            },
+            onProjectNameSubmitted: (val) {
+              setState(() {
+                _projectName = val.trim();
+                _isEditingName = false;
+              });
+            },
+            onLog: _addLog,
           ),
-        ),
-      ],
+          const SizedBox(height: 20),
+          HackathonBoard(
+            hackathons: _hackathons,
+            onLaunchUrl: _launchExternalUrl,
+            selectedHackathonId: _selectedHackathonId,
+            onHackathonSelected: (id) {
+              if (id == null) return;
+              setState(() => _selectedHackathonId = id);
+              _generateProposalsForHackathon(id);
+            },
+          ),
+          const SizedBox(height: 20),
+          CeoProposalGate(
+            activeOpportunity: _activeOpportunity,
+            ideaA: _ideaA,
+            ideaB: _ideaB,
+            isLoading: _isLoading,
+            isSessionReady: _isSessionReady,
+            onApproveConcept: _approveConcept,
+            onLaunchUrl: _launchExternalUrl,
+            selectedHackathon: _selectedHackathonId == null
+                ? null
+                : _hackathons.firstWhere(
+                    (h) => (h['id']?.toString() ?? '') == _selectedHackathonId,
+                    orElse: () => {},
+                  ),
+          ),
+          const SizedBox(height: 20),
+          CustomAndSkipRow(
+            customDirectiveController: _customDirectiveController,
+            onSubmitCustomDirective: _submitCustomDirective,
+            onSkipImplementation: _skipImplementation,
+          ),
+          const SizedBox(height: 20),
+          RepositoryStatusHub(
+            artifacts: _artifacts,
+            selectedFile: _selectedFile,
+            isLoading: _isLoading,
+            onFileSelected: (file) {
+              setState(() => _selectedFile = file);
+            },
+            onLog: _addLog,
+          ),
+        ],
+      ),
     );
   }
 
