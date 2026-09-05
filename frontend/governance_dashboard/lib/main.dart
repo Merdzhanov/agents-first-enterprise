@@ -12,6 +12,7 @@ import 'widgets/git_target_bar.dart';
 import 'widgets/hackathon_board.dart';
 import 'widgets/logs_sidebar.dart';
 import 'widgets/ceo_proposal_gate.dart';
+import 'widgets/ceo_review_gate.dart';
 import 'widgets/custom_and_skip_row.dart';
 import 'widgets/repository_status_hub.dart';
 import 'widgets/sessions_panel.dart';
@@ -96,6 +97,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic> _activeOpportunity = {};
   Map<String, dynamic> _ideaA = {};
   Map<String, dynamic> _ideaB = {};
+  Map<String, dynamic> _pendingHitlData = {};
 
   /// Safely converts a dynamic value (from JSON) to Map<String, dynamic>.
   /// Returns an empty map for null or non-Map values, preventing runtime
@@ -213,6 +215,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
             'failed' => 'Pipeline failed — see execution log for details',
             _ => 'Fleet status: $status',
           };
+          // Parse HITL pending input from session state
+          final state = session['state'] as Map<String, dynamic>?;
+          final pendingReq = state?['pending_request_input'] as Map<String, dynamic>?;
+          if (pendingReq != null && pendingReq.containsKey('prompt')) {
+            _pendingHitlData = pendingReq;
+          } else {
+            _pendingHitlData = {};
+          }
           // Terminal states: stop polling so the UI freezes on the final status.
           if (status == 'completed' ||
               status == 'skipped' ||
@@ -440,6 +450,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _handleHitlDecision(String decision, String feedback) async {
+    if (_sessionId.isEmpty) return;
+    setState(() => _isLoading = true);
+    try {
+      await _api.submitCeoDecision(
+        sessionId: _sessionId,
+        decisionChoice: decision,
+        customPrompt: feedback,
+      );
+      if (!mounted) return;
+      setState(() => _pendingHitlData = {});
+    } catch (e) {
+      _addLog('ERROR: HITL decision failed - $e', 'error');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   void _skipImplementation() {
     setState(() {
       _statusText = 'Pipeline Safely Halted (Skipped by CEO)';
@@ -657,6 +684,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _generateProposalsForHackathon(id);
             },
           ),
+          const SizedBox(height: 20),
+          if (_pendingHitlData.isNotEmpty)
+            CeoReviewGate(
+              pendingData: _pendingHitlData,
+              isLoading: _isLoading,
+              onDecision: _handleHitlDecision,
+            ),
           const SizedBox(height: 20),
           CeoProposalGate(
             activeOpportunity: _activeOpportunity,
