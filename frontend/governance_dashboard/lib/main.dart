@@ -12,7 +12,7 @@ import 'widgets/git_target_bar.dart';
 import 'widgets/hackathon_board.dart';
 import 'widgets/logs_sidebar.dart';
 import 'widgets/ceo_proposal_gate.dart';
-import 'widgets/ceo_review_gate.dart';
+import 'widgets/fleet_chat.dart';
 import 'widgets/custom_and_skip_row.dart';
 import 'widgets/repository_status_hub.dart';
 import 'widgets/sessions_panel.dart';
@@ -467,6 +467,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _handleChatSend(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    // URLs open in a browser tab; anything else is appended as a CEO note.
+    if (trimmed.startsWith('http')) {
+      _launchExternalUrl(trimmed);
+      return;
+    }
+    _addLog(trimmed, 'ceo');
+  }
+
   void _skipImplementation() {
     setState(() {
       _statusText = 'Pipeline Safely Halted (Skipped by CEO)';
@@ -685,11 +696,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             },
           ),
           const SizedBox(height: 20),
-          if (_pendingHitlData.isNotEmpty)
-            CeoReviewGate(
-              pendingData: _pendingHitlData,
+          if (_pendingHitlData.isNotEmpty || _logs.isNotEmpty)
+            FleetChat(
+              messages: _logs,
+              pendingGate: _pendingHitlData,
               isLoading: _isLoading,
-              onDecision: _handleHitlDecision,
+              onGateDecision: _handleHitlDecision,
+              onSend: _handleChatSend,
             ),
           const SizedBox(height: 20),
           CeoProposalGate(
