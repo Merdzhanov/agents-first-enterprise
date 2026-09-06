@@ -14,7 +14,8 @@ class FleetChat extends StatefulWidget {
   final Map<String, dynamic> ideaA;
   final Map<String, dynamic> ideaB;
   final Map<String, dynamic>? selectedHackathon;
-  final void Function(String conceptName, String defaultRepo, {String? decisionChoiceOverride, String? feedback}) onApproveConcept;
+  final void Function(String conceptName, String defaultRepo,
+      {String? decisionChoiceOverride, String? feedback}) onApproveConcept;
   final ValueChanged<String> onLaunchUrl;
 
   const FleetChat({
@@ -77,7 +78,7 @@ class _FleetChatState extends State<FleetChat> {
             padding: const EdgeInsets.all(12),
             children: [
               ...widget.messages.reversed.map(_bubble),
-              if (widget.pendingGate.isNotEmpty) ...[
+              if (widget.pendingGate.isNotEmpty || widget.ideaA.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 _gateCard(widget.pendingGate),
               ],
@@ -123,7 +124,7 @@ class _FleetChatState extends State<FleetChat> {
 
   Widget _gateCard(Map<String, dynamic> gate) {
     final meta = gate['metadata'] as Map<String, dynamic>? ?? {};
-    final stage = (meta['stage'] ?? '').toString();
+
     final isProposalGate = widget.ideaA.isNotEmpty;
 
     if (isProposalGate) {
@@ -133,7 +134,8 @@ class _FleetChatState extends State<FleetChat> {
     return _buildStandardGateCard(gate, meta);
   }
 
-  Widget _buildInlineProposalGate(Map<String, dynamic> gate, Map<String, dynamic> meta) {
+  Widget _buildInlineProposalGate(
+      Map<String, dynamic> gate, Map<String, dynamic> meta) {
     final opp = widget.selectedHackathon ?? widget.activeOpportunity;
     final oppTitle = (opp['title'] ?? '').toString();
     final oppUrl = (opp['url'] ?? '').toString();
@@ -147,7 +149,8 @@ class _FleetChatState extends State<FleetChat> {
       decoration: BoxDecoration(
         color: const Color(0xFF0B1F33),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF38BDF8).withAlpha(80), width: 1.5),
+        border: Border.all(
+            color: const Color(0xFF38BDF8).withAlpha(80), width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,7 +164,8 @@ class _FleetChatState extends State<FleetChat> {
                   color: const Color(0xFF38BDF8).withAlpha(30),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Icon(Icons.how_to_reg, size: 16, color: Color(0xFF38BDF8)),
+                child: const Icon(Icons.how_to_reg,
+                    size: 16, color: Color(0xFF38BDF8)),
               ),
               const SizedBox(width: 8),
               const SelectableText(
@@ -189,14 +193,16 @@ class _FleetChatState extends State<FleetChat> {
               decoration: BoxDecoration(
                 color: const Color(0xFF020617).withAlpha(150),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF38BDF8).withAlpha(30)),
+                border:
+                    Border.all(color: const Color(0xFF38BDF8).withAlpha(30)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.emoji_events, size: 14, color: Color(0xFFFBBF24)),
+                      const Icon(Icons.emoji_events,
+                          size: 14, color: Color(0xFFFBBF24)),
                       const SizedBox(width: 6),
                       Expanded(
                         child: SelectableText(
@@ -214,9 +220,12 @@ class _FleetChatState extends State<FleetChat> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text('Rules', style: TextStyle(fontSize: 11, color: Color(0xFF38BDF8))),
+                              Text('Rules',
+                                  style: TextStyle(
+                                      fontSize: 11, color: Color(0xFF38BDF8))),
                               SizedBox(width: 3),
-                              Icon(Icons.open_in_new, size: 11, color: Color(0xFF38BDF8)),
+                              Icon(Icons.open_in_new,
+                                  size: 11, color: Color(0xFF38BDF8)),
                             ],
                           ),
                         ),
@@ -227,20 +236,24 @@ class _FleetChatState extends State<FleetChat> {
                     Row(
                       children: [
                         if (prize != null) ...[
-                          const Icon(Icons.attach_money, size: 11, color: Color(0xFF87929A)),
+                          const Icon(Icons.attach_money,
+                              size: 11, color: Color(0xFF87929A)),
                           const SizedBox(width: 2),
                           SelectableText(
                             prize is num ? '\$${prize.toInt()}' : '$prize',
-                            style: const TextStyle(fontSize: 11, color: Color(0xFFBDC8D1)),
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFFBDC8D1)),
                           ),
                           const SizedBox(width: 12),
                         ],
                         if (deadline.isNotEmpty) ...[
-                          const Icon(Icons.calendar_today, size: 11, color: Color(0xFF87929A)),
+                          const Icon(Icons.calendar_today,
+                              size: 11, color: Color(0xFF87929A)),
                           const SizedBox(width: 4),
                           SelectableText(
                             deadline,
-                            style: const TextStyle(fontSize: 11, color: Color(0xFFBDC8D1)),
+                            style: const TextStyle(
+                                fontSize: 11, color: Color(0xFFBDC8D1)),
                           ),
                         ],
                       ],
@@ -250,14 +263,20 @@ class _FleetChatState extends State<FleetChat> {
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 4,
-                      children: themes.take(4).map((t) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8).withAlpha(20),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(t, style: const TextStyle(fontSize: 9, color: Color(0xFF8ED5FF))),
-                      )).toList(),
+                      children: themes
+                          .take(4)
+                          .map((t) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF38BDF8).withAlpha(20),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(t,
+                                    style: const TextStyle(
+                                        fontSize: 9, color: Color(0xFF8ED5FF))),
+                              ))
+                          .toList(),
                     ),
                   ],
                 ],
@@ -321,16 +340,15 @@ class _FleetChatState extends State<FleetChat> {
     final impact = (idea['impact'] ?? '').toString();
     final repo = (idea['repo_name'] ?? '').toString();
     final chips = govSafeStringList(idea['tech_stack']);
+    final detailedText = (idea['detailed_prompt'] ?? '').toString();
     final hackathonTitle = (idea['hackathon_title'] ?? '').toString();
     final hackathonUrl = (idea['hackathon_url'] ?? '').toString();
-
-    final detailedText = (idea['detailed_prompt'] ?? '').toString();
 
     return ConceptCard(
       conceptTag: tag,
       title: title,
-      description: description,
       detailedText: detailedText,
+      description: description,
       chips: chips,
       targetImpact: impact,
       impactColor: impactColor,
@@ -352,7 +370,8 @@ class _FleetChatState extends State<FleetChat> {
     );
   }
 
-  Widget _buildStandardGateCard(Map<String, dynamic> gate, Map<String, dynamic> meta) {
+  Widget _buildStandardGateCard(
+      Map<String, dynamic> gate, Map<String, dynamic> meta) {
     final arch = meta['architecture'] as Map<String, dynamic>? ?? {};
     final rawOptions = gate['options'] as List<dynamic>? ?? [];
     // Custom idea and skip buttons are not needed per user specification
@@ -375,7 +394,10 @@ class _FleetChatState extends State<FleetChat> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SelectableText(
-            (meta['gate'] ?? 'gate').toString().toUpperCase().replaceAll('_', ' '),
+            (meta['gate'] ?? 'gate')
+                .toString()
+                .toUpperCase()
+                .replaceAll('_', ' '),
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
@@ -399,17 +421,27 @@ class _FleetChatState extends State<FleetChat> {
           Wrap(
             spacing: 8,
             children: options.map((opt) {
-              final value = opt['value']?.toString() ?? opt['id']?.toString() ?? '';
-              final label = opt['label']?.toString() ?? opt['title']?.toString() ?? value;
-              final isApprove = value.contains('approve') || value.contains('confirm');
+              final value =
+                  opt['value']?.toString() ?? opt['id']?.toString() ?? '';
+              final label =
+                  opt['label']?.toString() ?? opt['title']?.toString() ?? value;
+              final isApprove =
+                  value.contains('approve') || value.contains('confirm');
               return ElevatedButton(
-                onPressed: widget.isLoading ? null : () => widget.onGateDecision(value, ''),
+                onPressed: widget.isLoading
+                    ? null
+                    : () => widget.onGateDecision(value, ''),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isApprove ? const Color(0xFF10B981) : const Color(0xFF38BDF8),
+                  backgroundColor: isApprove
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFF38BDF8),
                   foregroundColor: const Color(0xFF00354A),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
-                child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                child: Text(label,
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700)),
               );
             }).toList(),
           ),
@@ -437,12 +469,15 @@ class _FleetChatState extends State<FleetChat> {
               decoration: BoxDecoration(
                 color: const Color(0xFF020617),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF38BDF8).withAlpha(50)),
+                border:
+                    Border.all(color: const Color(0xFF38BDF8).withAlpha(50)),
               ),
               child: CallbackShortcuts(
                 bindings: <ShortcutActivator, VoidCallback>{
-                  const SingleActivator(LogicalKeyboardKey.enter, control: true): _send,
-                  const SingleActivator(LogicalKeyboardKey.enter, meta: true): _send,
+                  const SingleActivator(LogicalKeyboardKey.enter,
+                      control: true): _send,
+                  const SingleActivator(LogicalKeyboardKey.enter, meta: true):
+                      _send,
                 },
                 child: Scrollbar(
                   child: TextField(
@@ -482,13 +517,15 @@ class _FleetChatState extends State<FleetChat> {
                 backgroundColor: const Color(0xFF38BDF8),
                 foregroundColor: const Color(0xFF00354A),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
               ),
               child: widget.isLoading
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00354A)),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Color(0xFF00354A)),
                     )
                   : const Row(
                       mainAxisSize: MainAxisSize.min,
@@ -497,7 +534,10 @@ class _FleetChatState extends State<FleetChat> {
                         SizedBox(width: 4),
                         Text(
                           'SEND',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              letterSpacing: 0.5),
                         ),
                       ],
                     ),
