@@ -14,7 +14,7 @@ class FleetChat extends StatefulWidget {
   final Map<String, dynamic> ideaA;
   final Map<String, dynamic> ideaB;
   final Map<String, dynamic>? selectedHackathon;
-  final void Function(String conceptName, String defaultRepo, {String? decisionChoiceOverride}) onApproveConcept;
+  final void Function(String conceptName, String defaultRepo, {String? decisionChoiceOverride, String? feedback}) onApproveConcept;
   final ValueChanged<String> onLaunchUrl;
 
   const FleetChat({
@@ -124,8 +124,7 @@ class _FleetChatState extends State<FleetChat> {
   Widget _gateCard(Map<String, dynamic> gate) {
     final meta = gate['metadata'] as Map<String, dynamic>? ?? {};
     final stage = (meta['stage'] ?? '').toString();
-    final isProposalGate = stage == 'CEO_PROPOSAL_GATE' ||
-        (widget.ideaA.isNotEmpty && widget.ideaB.isNotEmpty);
+    final isProposalGate = widget.ideaA.isNotEmpty;
 
     if (isProposalGate) {
       return _buildInlineProposalGate(gate, meta);
@@ -325,10 +324,13 @@ class _FleetChatState extends State<FleetChat> {
     final hackathonTitle = (idea['hackathon_title'] ?? '').toString();
     final hackathonUrl = (idea['hackathon_url'] ?? '').toString();
 
+    final detailedText = (idea['detailed_prompt'] ?? '').toString();
+
     return ConceptCard(
       conceptTag: tag,
       title: title,
       description: description,
+      detailedText: detailedText,
       chips: chips,
       targetImpact: impact,
       impactColor: impactColor,
@@ -336,11 +338,15 @@ class _FleetChatState extends State<FleetChat> {
       btnText: 'Approve $tag',
       onApprove: widget.isLoading
           ? null
-          : () => widget.onApproveConcept(
+          : () {
+              widget.onApproveConcept(
                 title,
                 repo,
                 decisionChoiceOverride: decisionChoice,
-              ),
+                feedback: _input.text.trim(),
+              );
+              _input.clear();
+            },
       hackathonTitle: hackathonTitle.isNotEmpty ? hackathonTitle : null,
       hackathonUrl: hackathonUrl.isNotEmpty ? hackathonUrl : null,
     );
