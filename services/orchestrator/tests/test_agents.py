@@ -34,6 +34,8 @@ from app.schemas import (
     ArchitectureSpec,
     CodeReview,
     DualProposalResponse,
+    FilePlanEntry,
+    FilePlanResponse,
     GeneratedFile,
     IdeaProposal,
     SubmissionPackage,
@@ -58,23 +60,26 @@ def _fake_dart(endpoint_path: str, payload=None, *args, **kwargs) -> dict:
         }
     if endpoint_path == "tasks/provision-repo":
         p = payload or {}
-        repo_name = p.get("repo_name", "prototype-repo")
+        r_name = p.get("repo_name", "prototype-repo")
+        prov = p.get("provider", "github")
         return {
             "status": "provisioned",
-            "repo_name": repo_name,
-            "web_url": f"https://github.com/Merdzhanov/{repo_name}",
-            "provider": p.get("provider", "github"),
+            "repo_name": r_name,
+            "provider": prov,
+            "owner": "unit-test-org",
+            "web_url": f"https://{prov}.com/unit-test-org/{r_name}",
+            "clone_url": f"https://{prov}.com/unit-test-org/{r_name}.git",
+            "message": "Repository created and initial README committed.",
         }
     if endpoint_path == "tasks/commit-files":
-        files = (payload or {}).get("files") or []
+        files = (payload or {}).get("files", [])
         return {
             "status": "committed",
-            "commit_sha": "unitsha123456",
-            "files_committed": [
-                f.get("path") for f in files if isinstance(f, dict)
-            ],
+            "commit_sha": "abc123unitfake",
+            "files_committed": len(files),
+            "branch": "main",
         }
-    return {"status": "ok", "echo": payload}
+    return {"status": "success"}
 
 
 def _fake_proposals(self, opportunity, memory_context=None) -> DualProposalResponse:
@@ -101,6 +106,10 @@ def _fake_proposals(self, opportunity, memory_context=None) -> DualProposalRespo
     )
 
 
+def _fake_proposals_from_prompt(self, system_prompt, memory_context=None) -> DualProposalResponse:
+    return _fake_proposals(self, {"title": "System Prompt"}, memory_context)
+
+
 def _fake_architecture(self, idea, git_provider: str = "GITHUB", revision_feedback: str = "") -> ArchitectureSpec:
     return ArchitectureSpec(
         title=f"Cloud Native Architecture: {idea.get('title', 'Enterprise Prototype')}",
@@ -113,14 +122,31 @@ def _fake_architecture(self, idea, git_provider: str = "GITHUB", revision_feedba
     )
 
 
+def _fake_file_plan(self, idea, architecture) -> FilePlanResponse:
+    return FilePlanResponse(
+        project_type="Backend Service",
+        primary_language="python",
+        entry_point="src/main.py",
+        files=[
+            FilePlanEntry(path="README.md", purpose="Architecture guide", language="markdown", is_critical_for_review=False),
+            FilePlanEntry(path="src/main.py", purpose="Entry point", language="python", is_critical_for_review=True),
+            FilePlanEntry(path="src/agent.py", purpose="Agent supervisor", language="python", is_critical_for_review=True),
+            FilePlanEntry(path="Dockerfile", purpose="Container config", language="dockerfile", is_critical_for_review=True),
+            FilePlanEntry(path="requirements.txt", purpose="Dependencies", language="text", is_critical_for_review=False),
+            FilePlanEntry(path="tests/test_main.py", purpose="Tests", language="python", is_critical_for_review=False),
+        ],
+        reasoning="Standard 6-file scaffold for unit testing",
+    )
+
+
 def _fake_source_file(
     self, idea, architecture, file_path, purpose, existing_files,
-    ceo_feedback=None, is_critical=False,
+    ceo_feedback=None, is_critical=False, language=None, context_hints=None,
 ) -> GeneratedFile:
     return GeneratedFile(
         path=file_path,
         content=f"# mock implementation of {file_path}\n",
-        language="python",
+        language=language or "python",
         commit_message=f"feat: scaffold {file_path}",
     )
 
@@ -151,15 +177,22 @@ def _fake_code_review(
 class TestOrchestratorFleet(unittest.TestCase):
     def setUp(self):
         # Dart node: never hit the network from unit tests.
-        dart_patcher = patch.object(agents_mod, "execute_dart_task", _fake_dart)
-        dart_patcher.start()
-        self.addCleanup(dart_patcher.stop)
+        import app.tools as tools_mod
+        import app.agents.scout as scout_mod
+        import app.agents.planner as planner_mod
+        import app.agents.leaddev as leaddev_mod
+        for target in (agents_mod, tools_mod, scout_mod, planner_mod, leaddev_mod):
+            p = patch.object(target, "execute_dart_task", _fake_dart)
+            p.start()
+            self.addCleanup(p.stop)
 
         # Vertex AI: patch at class level so every agent's own client
         # instance (`llm or VertexGeminiClient()`) uses deterministic fakes.
         for method_name, fake in (
             ("generate_proposals", _fake_proposals),
+            ("generate_proposals_from_prompt", _fake_proposals_from_prompt),
             ("generate_architecture", _fake_architecture),
+            ("generate_file_plan", _fake_file_plan),
             ("generate_source_file", _fake_source_file),
             ("generate_submission", _fake_submission),
             ("generate_code_review", _fake_code_review),

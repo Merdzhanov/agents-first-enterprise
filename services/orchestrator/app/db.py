@@ -177,6 +177,27 @@ class CloudSessionManager:
             session_data = self._local_sessions.get(session_id)
             return json.loads(json.dumps(session_data)) if session_data else None
 
+    def delete_session(self, session_id: str) -> bool:
+        """Deletes a session record by session_id."""
+        if self._use_db:
+            session = self._get_session()
+            try:
+                record = session.query(SessionRecord).filter_by(session_id=session_id).first()
+                if record:
+                    session.delete(record)
+                    session.commit()
+                    return True
+                return False
+            except Exception as e:
+                session.rollback()
+                import sys
+                print(f"⚠️ [CloudSessionManager] delete_session failed: {e}", file=sys.stderr)
+                return False
+            finally:
+                session.close()
+        else:
+            return self._local_sessions.pop(session_id, None) is not None
+
     def session_exists(self, session_id: str) -> bool:
         """Fast check if a session exists without loading full payload."""
         if self._use_db:

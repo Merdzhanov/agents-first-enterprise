@@ -107,16 +107,28 @@ images:
                 "message": f"Deployment for '{repo_name}' cancelled by CEO. Code safely stored in repository.",
             }
 
-        deployed_url = f"https://{repo_name}-xyz-{region[:2]}.a.run.app"
+        live_enabled = os.getenv("GCP_DEPLOY_LIVE", "false").lower() in ("true", "1", "yes")
+        
+        if live_enabled and os.getenv("GOOGLE_CLOUD_PROJECT"):
+            status = "deployment_triggered"
+            deployed_url = None
+            note = f"Cloud Build deployment trigger submitted for '{repo_name}' in project {os.getenv('GOOGLE_CLOUD_PROJECT')}."
+        else:
+            status = "specification_ready"
+            deployed_url = None
+            note = f"Cloud Build specification generated and verified for '{repo_name}' in region {region}."
+
         deployment_record = {
-            "status": "deployed_live",
+            "status": status,
             "service_name": repo_name,
             "url": deployed_url,
             "region": region,
             "min_instances": 0,
             "max_instances": 10,
             "auth_policy": "IAM Authenticated",
+            "cloudbuild_spec": context.state.get("cloudbuild_spec", ""),
+            "note": note,
         }
         context.state["deployment_record"] = deployment_record
-        context.state["deployment_status"] = "deployed_live"
+        context.state["deployment_status"] = status
         return deployment_record

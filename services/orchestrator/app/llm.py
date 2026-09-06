@@ -16,6 +16,8 @@ from .schemas import (
     ArchitectureSpec,
     CodeReview,
     DualProposalResponse,
+    FilePlanEntry,
+    FilePlanResponse,
     GeneratedFile,
     IdeaProposal,
     SubmissionPackage,
@@ -146,26 +148,73 @@ class VertexGeminiClient:
 
         raise RuntimeError("Vertex AI client not configured (GOOGLE_GENAI_USE_VERTEXAI != True)")
 
+    def generate_proposals_from_prompt(
+        self,
+        system_prompt: str,
+        memory_context: Optional[List[Dict[str, Any]]] = None,
+    ) -> DualProposalResponse:
+        """Synthesizes 2 competing technical implementation approaches for a given system prompt."""
+        if not system_prompt or not system_prompt.strip():
+            raise RuntimeError("Cannot generate proposals: system prompt is empty.")
+
+        context_str = ""
+        if memory_context:
+            context_str = "\n--- RELEVANT MEMORY CONTEXT ---\n"
+            for mem in memory_context:
+                context_str += f"- {mem.get('content', '')}\n"
+            context_str += "-------------------------------\n"
+
+        prompt = (
+            f"A comprehensive System Prompt / Project Specification was provided:\n\n"
+            f"```\n{system_prompt.strip()}\n```\n"
+            f"{context_str}\n"
+            f"Synthesize exactly TWO distinct, high-quality technical implementation approaches for this specification.\n"
+            f"Both proposals MUST directly implement the requested project requirements without deviating from the core goal.\n"
+            f"- Idea A: Primary approach emphasizing modular architecture, native performance, and state-of-the-art patterns\n"
+            f"- Idea B: Alternative approach emphasizing flexibility, extensive extensibility, or specialized optimizations\n"
+            f"- Both must feature valid kebab-case repository names matching the project\n"
+            f"- Accurately capture the required tech stack and impact\n"
+        )
+        if self._client:
+            try:
+                from google.genai import types
+                response = self._client.models.generate_content(
+                    model=self.model_fast,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction="You are the Executive Planner Agent. You formulate concrete, technically precise execution proposals for software projects.",
+                        response_mime_type="application/json",
+                        response_schema=DualProposalResponse,
+                        temperature=0.6,
+                    ),
+                )
+                return self._parse_json_response(response.text, DualProposalResponse)
+            except Exception as err:
+                raise RuntimeError(f"Vertex AI generate_proposals_from_prompt failed: {err}") from err
+
+        raise RuntimeError("Vertex AI client not configured (GOOGLE_GENAI_USE_VERTEXAI != True)")
+
     def generate_architecture(
         self,
         idea: Dict[str, Any],
         git_provider: str = "GITHUB",
         revision_feedback: str = "",
     ) -> ArchitectureSpec:
-        """Synthesizes Google Cloud system architecture and Mermaid topology."""
+        """Synthesizes system architecture and Mermaid topology tailored to the project's requirements."""
         title = idea.get("title", "Enterprise Prototype")
         repo_name = idea.get("repo_name", "prototype-repo")
+        tech_stack = idea.get("tech_stack", [])
 
         prompt = (
-            f"Design the complete Google Cloud system architecture for: \"{title}\".\n"
-            f"Tech Stack: {', '.join(idea.get('tech_stack', []))}\n"
+            f"Design the complete system architecture for: \"{title}\".\n"
+            f"Tech Stack: {', '.join(tech_stack)}\n"
             f"Target Provider: {git_provider}\n"
             f"Repo Name: {repo_name}\n\n"
             f"Requirements:\n"
-            f"- Compute: Google Cloud Run with scale-to-zero (min-instances=0)\n"
-            f"- Session Storage: Google Cloud SQL PostgreSQL with Row-Level Security (RLS)\n"
-            f"- Vector Memory: Google Cloud SQL with pgvector (text-embedding-005)\n"
-            f"- Messaging: Google Cloud Pub/Sub\n"
+            f"- Tailor compute, storage, and runtime targets directly to the project's actual tech stack and requirements.\n"
+            f"- For cloud backends/APIs: specify appropriate Google Cloud services (Cloud Run, Cloud SQL, Pub/Sub, etc.).\n"
+            f"- For client libraries, Flutter packages, graphics engines, or WASM modules: specify rendering pipelines, runtime hosts, asset compilation, and distribution targets.\n"
+            f"- Include key architectural components with clear roles.\n"
             f"- Generate a clean Mermaid diagram representing the data and control flow. Ensure the Mermaid code is RAW text without markdown code blocks.\n\n"
             f"## CEO revision request (MUST be incorporated)\n{revision_feedback or 'No revisions requested — keep the first-pass design.'}"
         )
@@ -177,7 +226,7 @@ class VertexGeminiClient:
                     model=self.model_pro,
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        system_instruction="You are the Architect Agent. You design robust, scalable, and secure Google Cloud Native architectures.",
+                        system_instruction="You are the Architect Agent. You design robust, scalable, and elegant system architectures tailored to any technology stack.",
                         response_mime_type="application/json",
                         response_schema=ArchitectureSpec,
                         temperature=0.3,
@@ -186,6 +235,53 @@ class VertexGeminiClient:
                 return self._parse_json_response(response.text, ArchitectureSpec)
             except Exception as err:
                 raise RuntimeError(f"Vertex AI generate_architecture failed: {err}") from err
+
+        raise RuntimeError("Vertex AI client not configured (GOOGLE_GENAI_USE_VERTEXAI != True)")
+
+    def generate_file_plan(
+        self,
+        idea: Dict[str, Any],
+        architecture: Dict[str, Any],
+    ) -> FilePlanResponse:
+        """Dynamically plans the exact list of files needed to scaffold and implement the project."""
+        title = idea.get("title", "Project")
+        summary = idea.get("summary", "")
+        tech_stack = idea.get("tech_stack", [])
+        arch_title = architecture.get("title", "")
+        components = [c.get("name", "") for c in architecture.get("components", [])]
+
+        prompt = (
+            f"Generate a comprehensive, production-grade file plan for the project: \"{title}\".\n\n"
+            f"Summary: {summary}\n"
+            f"Tech Stack: {', '.join(tech_stack)}\n"
+            f"Architecture: {arch_title}\n"
+            f"Components: {', '.join(components)}\n\n"
+            f"Rules for the file plan:\n"
+            f"1. Generate the essential, working file scaffold tailored specifically to this tech stack and project type.\n"
+            f"   - For Flutter/Dart packages: pubspec.yaml, lib/ entrypoint and components, shaders/ (.frag), controllers, tests, README.md.\n"
+            f"   - For Python backends: pyproject.toml/requirements.txt, src/ modules, Dockerfile, tests, README.md.\n"
+            f"   - For Rust/WASM: Cargo.toml, src/lib.rs, bindings, build configs, tests.\n"
+            f"   - For any other stack: create the authentic standard directory layout and manifests.\n"
+            f"2. Every file MUST have a clear, distinct purpose and accurate language tag.\n"
+            f"3. Mark core entrypoints, critical interfaces, or shaders as `is_critical_for_review = True`.\n"
+            f"4. Provide between 4 and 8 essential files that form a functional, non-truncated codebase.\n"
+        )
+        if self._client:
+            try:
+                from google.genai import types
+                response = self._client.models.generate_content(
+                    model=self.model_fast,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction="You are the Lead Systems Architect and Lead Dev. You plan pristine, complete repository file structures for any programming language or technology stack.",
+                        response_mime_type="application/json",
+                        response_schema=FilePlanResponse,
+                        temperature=0.2,
+                    ),
+                )
+                return self._parse_json_response(response.text, FilePlanResponse)
+            except Exception as err:
+                raise RuntimeError(f"Vertex AI generate_file_plan failed: {err}") from err
 
         raise RuntimeError("Vertex AI client not configured (GOOGLE_GENAI_USE_VERTEXAI != True)")
 
@@ -198,16 +294,24 @@ class VertexGeminiClient:
         existing_files: List[str],
         ceo_feedback: Optional[str] = None,
         is_critical: bool = False,
+        language: Optional[str] = None,
+        context_hints: Optional[str] = None,
     ) -> GeneratedFile:
         """Generates a complete source file for the downstream repository."""
+        lang_instruction = f"Language / Format: {language}\n" if language else ""
+        hints_instruction = f"Cross-file context:\n{context_hints}\n" if context_hints else ""
+
         prompt = (
             f"Generate the complete production-grade source code for: `{file_path}`.\n"
             f"Prototype: {idea.get('title')}\n"
             f"Summary: {idea.get('summary')}\n"
             f"Purpose of file: {purpose}\n"
+            f"{lang_instruction}"
             f"Existing files in project: {', '.join(existing_files)}\n"
+            f"{hints_instruction}"
             f"CEO Feedback to address: {ceo_feedback or 'None'}\n\n"
-            f"Return complete, compilable, runnable code with zero truncation or placeholders. Ensure code is returned as RAW text, NOT wrapped in markdown blocks."
+            f"Return complete, compilable, runnable code with zero truncation, placeholders, or TODOs. "
+            f"Ensure code is returned as RAW text, NOT wrapped in markdown blocks."
         )
         if self._client:
             try:
@@ -216,7 +320,7 @@ class VertexGeminiClient:
                     model=self.model_pro,
                     contents=prompt,
                     config=types.GenerateContentConfig(
-                        system_instruction="You are the Lead Developer Agent. You write production-grade, bug-free, and well-documented source code.",
+                        system_instruction="You are the Lead Developer Agent. You write production-grade, bug-free, and well-documented source code for any programming language or shader format.",
                         response_mime_type="application/json",
                         response_schema=GeneratedFile,
                         temperature=0.2,

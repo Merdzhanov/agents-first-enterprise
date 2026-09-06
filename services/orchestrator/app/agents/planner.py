@@ -1,6 +1,7 @@
 """Planner Agent — central PM & Lifecycle Steward."""
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Dict, Optional
 
@@ -31,9 +32,14 @@ class PlannerAgent:
         self.llm = llm or VertexGeminiClient()
 
     def formulate_proposals(self, opportunity: Dict[str, Any], context: ToolContext) -> AgentResult:
-        search_query = f"enterprise prototype {opportunity.get('title', '')} {opportunity.get('theme', '')}"
-        memories = context.search_memory(search_query.strip())
-        proposals = self.llm.generate_proposals(opportunity, memory_context=memories)
+        system_prompt = context.state.get("system_prompt")
+        if system_prompt and hasattr(self.llm, "generate_proposals_from_prompt"):
+            memories = context.search_memory(system_prompt[:100])
+            proposals = self.llm.generate_proposals_from_prompt(system_prompt, memory_context=memories)
+        else:
+            search_query = f"enterprise prototype {opportunity.get('title', '')} {opportunity.get('theme', '')}"
+            memories = context.search_memory(search_query.strip())
+            proposals = self.llm.generate_proposals(opportunity, memory_context=memories)
 
         idea_a = proposals.idea_a.model_dump()
         idea_b = proposals.idea_b.model_dump()
@@ -67,6 +73,20 @@ class PlannerAgent:
             raise ValueError("ToolContext is required for process_ceo_decision")
 
         normalized_provider = "gitlab" if git_provider == "gitlab" else "github"
+        context.state["git_provider"] = normalized_provider
+        context.state["ceo_decision_choice"] = decision_choice
+
+        # Handle Skip
+        if decision_choice == "skip_implementation":
+            context.state["workflow_status"] = "skipped"
+            context.state["pipeline_status"] = "skipped_by_ceo"
+            context.state["spend_usd"] = 0.0
+            return AgentResult(
+                agent_name=self.name,
+                status="skipped",
+                message="CEO elected to skip implementation. Session archived with zero cloud spend.",
+                data={"decision": "skip_implementation", "spend_usd": 0.0},
+            )
 
         # Determine selected idea
         selected_idea: Dict[str, Any]
@@ -99,10 +119,13 @@ class PlannerAgent:
         # Clean the description for GitHub API compatibility before provisioning
         cleaned_description = _clean_github_description(selected_idea.get("summary", "Autonomous prototype"))
 
+        owner = os.getenv("GIT_OWNER") or os.getenv("GITHUB_ACTOR") or "agent-enterprise"
+
         # Provision repository via Dart Node
         repo_payload = {
             "repo_name": final_repo_name,
             "provider": normalized_provider,
+            "owner": owner,
             "description": cleaned_description,
             "readme_content": (
                 f"# {selected_idea.get('title')}\n\n"
@@ -131,10 +154,11 @@ class PlannerAgent:
                     "status": "provisioned",
                     "repo_name": final_repo_name,
                     "provider": normalized_provider,
+                    "owner": owner,
                     "web_url": (
-                        f"https://github.com/Merdzhanov/{final_repo_name}"
+                        f"https://github.com/{owner}/{final_repo_name}"
                         if normalized_provider == "github"
-                        else f"https://gitlab.com/Merdzhanov/{final_repo_name}"
+                        else f"https://gitlab.com/{owner}/{final_repo_name}"
                     ),
                     "message": "Adopted pre-existing repository.",
                 }

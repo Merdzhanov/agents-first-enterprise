@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from .api_models import CeoDecisionRequest, CeoIdeaRequest, GenerateProposalsRequest
+from .api_models import CeoDecisionRequest, CeoIdeaRequest, GenerateProposalsRequest, SystemPromptRequest
 from .fleet_workflow import LLM_CLIENT, SESSION_DB, start_fleet_run
 from .pipeline_tasks import execute_ceo_pipeline_background_manual
 from .agents import PlannerAgent
@@ -133,3 +133,51 @@ async def submit_ceo_idea(req: CeoIdeaRequest, background_tasks: BackgroundTasks
         "message": "CEO idea accepted — fleet pipeline started in background.",
         "execution_mode": "manual",
     }
+
+
+@router.post("/fleet/system-prompt")
+async def submit_system_prompt(req: SystemPromptRequest) -> Dict[str, Any]:
+    """Takes a comprehensive system prompt / project specification, generates
+    two competing architectural approaches via Vertex AI, and enters the CEO proposal gate."""
+    session_id = req.session_id or f"session_prompt_{int(time.time())}"
+
+    SESSION_DB.append_trace(
+        session_id, "CEO", "system_prompt",
+        f"System Prompt submitted: {req.system_prompt[:120]}...",
+    )
+
+    try:
+        state, pending = await start_fleet_run(
+            session_id=session_id,
+            raw_feed={},
+            state_overrides={
+                "system_prompt": req.system_prompt,
+                "git_provider": req.git_provider,
+                "tenant_id": req.tenant_id,
+            },
+        )
+        idea_a = state.get("idea_a")
+        idea_b = state.get("idea_b")
+        if not idea_a or not idea_b:
+            proposed = (state.get("proposed_ideas") or {}).get("proposals") or {}
+            idea_a = idea_a or proposed.get("idea_a")
+            idea_b = idea_b or proposed.get("idea_b")
+
+        reasoning = state.get("planner_reasoning") or (state.get("proposed_ideas") or {}).get("reasoning", "")
+        SESSION_DB.save_session(session_id, "awaiting_ceo_decision", "PlannerAgent", state)
+
+        return {
+            "session_id": session_id,
+            "status": "awaiting_ceo_decision",
+            "execution_mode": "adk_runner",
+            "data": {
+                "idea_a": idea_a,
+                "idea_b": idea_b,
+                "reasoning": reasoning,
+            },
+            "request_input": pending,
+            "message": "Generated 2 competing implementation approaches for the system prompt.",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process system prompt: {e}") from e
+

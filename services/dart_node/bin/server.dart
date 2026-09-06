@@ -137,7 +137,10 @@ Future<Response> _commitFilesHandler(
     final Map<String, dynamic> body = jsonDecode(payloadString);
     final String provider = (body['provider'] ?? 'github').toString().toLowerCase();
     final String repoName = body['repo_name'] ?? '';
-    final String owner = body['owner'] ?? 'Merdzhanov';
+    final String owner = body['owner'] ??
+        Platform.environment['GIT_OWNER'] ??
+        Platform.environment['GITHUB_ACTOR'] ??
+        'agent-enterprise';
     final List<dynamic> rawFiles = body['files'] ?? [];
     final List<Map<String, dynamic>> files = rawFiles.cast<Map<String, dynamic>>();
 

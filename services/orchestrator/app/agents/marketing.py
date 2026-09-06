@@ -20,10 +20,18 @@ class MarketingAgent:
         repo = context.state.get("git_repo", {})
         provider_name = context.state.get("git_provider", "github").upper()
 
+        code_deliverables = context.state.get("code_deliverables", {})
+        review_data = context.state.get("code_review", {})
+        review_verdict = review_data.get("verdict", "approved")
+        verification_status = (
+            code_deliverables.get("verification_status")
+            or f"Implementation reviewed and approved ({review_verdict}) with {len(context.state.get('committed_files', []))} files committed"
+        )
+
         submission = self.llm.generate_submission(
             idea=selected_idea,
             repo_url=repo.get("web_url", "https://github.com"),
-            test_results="Passed all automated unit tests and health checks",
+            test_results=verification_status,
         )
         submission_dict = submission.model_dump()
         submission_dict["demo_script"] = submission_dict.get("demo_script_markdown")

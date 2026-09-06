@@ -35,14 +35,31 @@ class ArchitectureComponent(BaseModel):
 class ArchitectureSpec(BaseModel):
     """Schema for the system architecture designed by the Architect Agent."""
     title: str = Field(description="Architecture title")
-    compute_target: str = Field(default="Google Cloud Run (min-instances=0)")
-    session_store: str = Field(default="Cloud SQL PostgreSQL (with RLS)")
-    vector_memory_store: str = Field(default="Cloud SQL pgvector (text-embedding-005)")
+    compute_target: str = Field(default="Container / Client Runtime", description="Target compute or execution environment")
+    session_store: str = Field(default="Local or Remote State Store", description="Session or data persistence store")
+    vector_memory_store: str = Field(default="Vector or In-Memory Store", description="Vector or semantic memory store")
     git_provider: Literal["github", "gitlab"] = Field(default="github", description="Target Git hosting provider")
     components: List[ArchitectureComponent] = Field(default_factory=list)
     diagram_mermaid: str = Field(
         description="Valid Mermaid syntax markdown diagram representing the topology. EXACT RULE: Return RAW text only. DO NOT wrap in markdown ```mermaid``` code blocks."
     )
+
+
+class FilePlanEntry(BaseModel):
+    """Spec for an individual file to be generated in a dynamic project scaffold."""
+    path: str = Field(description="Relative file path (e.g. lib/agents_procedural_3d.dart, shaders/raymarch.frag, src/main.py)")
+    purpose: str = Field(description="Precise technical responsibility and requirements for this file")
+    language: str = Field(default="generic", description="Language or format (e.g. dart, glsl, rust, python, yaml, json, markdown)")
+    is_critical_for_review: bool = Field(default=False, description="Whether this file defines core architecture or public API")
+
+
+class FilePlanResponse(BaseModel):
+    """Schema for LLM-driven project file plan synthesis."""
+    project_type: str = Field(description="Detected project type (e.g. Flutter Package, Graphics Engine, API Backend, CLI)")
+    primary_language: str = Field(description="Primary programming language")
+    entry_point: str = Field(description="Main entry point or public export file")
+    files: List[FilePlanEntry] = Field(description="Ordered list of files to generate for a complete working scaffold")
+    reasoning: str = Field(description="Architectural rationale for the selected file hierarchy")
 
 
 class FileRequest(BaseModel):
@@ -111,6 +128,8 @@ AdkIdeaProposal = IdeaProposal
 AdkDualProposalResponse = DualProposalResponse
 AdkArchitectureComponent = ArchitectureComponent
 AdkArchitectureSpec = ArchitectureSpec
+AdkFilePlanEntry = FilePlanEntry
+AdkFilePlanResponse = FilePlanResponse
 AdkFileRequest = FileRequest
 AdkGeneratedFile = GeneratedFile
 AdkSubmissionPackage = SubmissionPackage

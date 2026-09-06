@@ -9,6 +9,7 @@ class TopNavBar extends StatelessWidget {
     required this.isSubmittingIdea,
     required this.onTriggerDiscovery,
     required this.onShowNewIdeaDialog,
+    required this.onShowSystemPromptDialog,
   });
 
   final String statusText;
@@ -16,6 +17,7 @@ class TopNavBar extends StatelessWidget {
   final bool isSubmittingIdea;
   final VoidCallback onTriggerDiscovery;
   final VoidCallback onShowNewIdeaDialog;
+  final VoidCallback onShowSystemPromptDialog;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +45,7 @@ class TopNavBar extends StatelessWidget {
               const SizedBox(width: 24),
               const _NavPill(label: 'Fleet Ready'),
               const SizedBox(width: 16),
-              const _NavPill(label: 'Python ADK 2.0'),
+              const _NavPill(label: 'Python ADK 2.6.2'),
               const SizedBox(width: 16),
               const _NavPill(label: 'Scale-to-Zero'),
               const SizedBox(width: 24),
@@ -88,6 +90,33 @@ class TopNavBar extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4)),
                   elevation: 0,
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: isLoading || isSubmittingIdea ? null : onShowSystemPromptDialog,
+                icon: const Icon(
+                  Icons.terminal,
+                  size: 18,
+                  color: Color(0xFF38BDF8),
+                ),
+                label: const SelectableText(
+                  'SYSTEM PROMPT',
+                  style: TextStyle(
+                    color: Color(0xFF38BDF8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  side: BorderSide(
+                    color: const Color(0xFF38BDF8).withAlpha(180),
+                  ),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4)),
                 ),
               ),
               const SizedBox(width: 12),

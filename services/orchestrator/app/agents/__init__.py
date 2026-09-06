@@ -21,8 +21,10 @@ from .compliance import ComplianceAgent
 from .shader import ShaderEngineerAgent
 from .flutter import FlutterFrontendAgent
 from .orchestrator import adk_scout_agent, adk_planner_agent, adk_architect_agent, adk_fleet_orchestrator
+from ..tools import execute_dart_task
 
 __all__ = [
+    "execute_dart_task",
     "AgentResult",
     "GDPR_REQUIREMENTS",
     "BULGARIA_REQUIREMENTS",

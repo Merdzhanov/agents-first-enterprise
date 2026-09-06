@@ -87,3 +87,15 @@ class MemoryStoreRequest(BaseModel):
     content: str = Field(description="The memory fact content to be embedded and stored")
     tenant_id: str = Field(default="default_enterprise", description="RLS tenant isolation key")
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SystemPromptRequest(BaseModel):
+    """System Prompt input: executes any comprehensive project specification."""
+
+    system_prompt: str = Field(
+        ..., min_length=10, description="Full comprehensive system prompt or project specification"
+    )
+    session_id: Optional[str] = Field(default=None, description="Optional session id")
+    git_provider: str = Field(default="github", description="github | gitlab")
+    tenant_id: str = Field(default="default_enterprise", description="Tenant id")
+

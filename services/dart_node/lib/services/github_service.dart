@@ -59,8 +59,11 @@ class GitHubService {
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final String htmlUrl = data['html_url'] ?? 'https://github.com/Merdzhanov/$sanitizedName';
-        final String owner = data['owner']?['login'] ?? 'Merdzhanov';
+        final String defaultOwner = Platform.environment['GIT_OWNER'] ??
+            Platform.environment['GITHUB_ACTOR'] ??
+            'agent-enterprise';
+        final String owner = data['owner']?['login'] ?? defaultOwner;
+        final String htmlUrl = data['html_url'] ?? 'https://github.com/$owner/$sanitizedName';
         final int repoId = data['id'] ?? (20000000 + sanitizedName.hashCode.abs() % 80000000);
 
         // Upload custom README.md
@@ -87,12 +90,15 @@ class GitHubService {
         throw HttpException('GitHub API error (${response.statusCode}): ${response.body}');
       }
     } catch (e) {
+      final String fallbackOwner = Platform.environment['GIT_OWNER'] ??
+          Platform.environment['GITHUB_ACTOR'] ??
+          'agent-enterprise';
       return {
         'status': 'error',
         'provider': 'github',
         'error_type': 'GitHubProvisioningFailed',
         'message': e.toString(),
-        'fallback_url': 'https://github.com/Merdzhanov/$sanitizedName',
+        'fallback_url': 'https://github.com/$fallbackOwner/$sanitizedName',
       };
     }
   }

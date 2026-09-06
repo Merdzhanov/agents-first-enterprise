@@ -27,11 +27,19 @@ async def scout_node(ctx: Any):
     pre-selected hackathon so the planner generates aligned proposals.
     """
     tc = _tool_ctx(ctx)
-    # Pre-seeded opportunity: skip discovery, flow straight to planner.
-    if tc.state.get("active_opportunity"):
+    # Pre-seeded opportunity or custom system prompt: skip discovery, flow straight to planner.
+    if tc.state.get("active_opportunity") or tc.state.get("system_prompt"):
+        if not tc.state.get("active_opportunity"):
+            tc.state["active_opportunity"] = {
+                "title": "Custom System Prompt Specification",
+                "tracks": ["System Prompt Architecture"],
+                "prize_pool": 0,
+                "requirements": ["Full implementation of prompt specifications"],
+            }
+            _sync_state(ctx, tc)
         SESSION_DB.append_trace(
             tc.session_id, "ScoutAgent", "system",
-            "ADK node: active_opportunity pre-seeded — skipping Devpost discovery.",
+            "ADK node: opportunity/prompt pre-seeded — skipping Devpost discovery.",
         )
         yield {"status": "success"}
         return

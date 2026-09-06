@@ -62,6 +62,8 @@ async def deployment_gate_node(ctx: Any):
     if CEO_DEPLOYMENT_GATE in resume:
         payload = resume[CEO_DEPLOYMENT_GATE] or {}
         decision = payload.get("decision", "confirm_deploy_cloud_run")
+        ctx.state["pending_request_input"] = {}
+        tc.state["pending_request_input"] = {}
         SESSION_DB.append_trace(
             tc.session_id, "CEO", "ceo",
             f"ADK resume: CEO deployment decision '{decision}'.",
@@ -71,7 +73,7 @@ async def deployment_gate_node(ctx: Any):
         _sync_state(ctx, tc)
         SESSION_DB.append_trace(
             tc.session_id, "DeploymentAgent",
-            "success" if result.get("status") == "deployed_live" else "info",
+            "success" if result.get("status") in ("deployed_live", "specification_ready", "deployment_triggered") else "info",
             f"Deployment result: {result.get('status')} — {result.get('message', result.get('url', ''))}",
         )
         yield {"deployment": result, "status": result.get("status")}

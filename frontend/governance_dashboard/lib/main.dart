@@ -20,6 +20,8 @@ import 'widgets/memory_panel.dart';
 import 'widgets/security_panel.dart';
 import 'widgets/system_panel.dart';
 import 'widgets/gov_helpers.dart';
+import 'widgets/system_prompt_dialog.dart';
+import 'widgets/pipeline_stepper.dart';
 
 void main() {
   debugPrint('[ENV] kIsWasm=$kIsWasm');
@@ -77,14 +79,14 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String _selectedProvider = 'GitHub';
-  String _projectName = 'ephemeraflow-governed-fleet';
+  String _projectName = 'autonomous-agent-prototype';
   bool _isEditingName = false;
   final TextEditingController _nameController =
-      TextEditingController(text: 'ephemeraflow-governed-fleet');
+      TextEditingController(text: 'autonomous-agent-prototype');
   final TextEditingController _customDirectiveController =
       TextEditingController();
 
-  String _statusText = 'No active session — trigger discovery to begin.';
+  String _statusText = 'No active session — trigger discovery or execute system prompt to begin.';
   bool _isLoading = false;
   bool _isSessionReady = false;
   String _selectedFile = '';
@@ -325,6 +327,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _selectedHackathonId = hackathons.first['id']?.toString();
         }
         _statusText = 'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name';
+        _isSessionReady = true;
       });
       _addLog(
           'Scout Agent: Ranked ${hackathons.length} live hackathons — top 5 now on the Live Hackathon Board.',
@@ -378,6 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _ideaB = _safeMap(result['idea_b']);
         _activeOpportunity = hackathon;
         _statusText = 'Proposals ready for "${hackathon['title']}"';
+        _isSessionReady = true;
       });
       _addLog(
           'Planner Agent: Generated 2 proposals aligned to "${hackathon['title']}".',
@@ -399,8 +403,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final provider = _selectedProvider.toLowerCase();
     final repoName = _projectName.trim().isEmpty ? defaultRepo : _projectName.trim();
     final repoUrl = _selectedProvider == 'GitHub'
-        ? 'https://github.com/Merdzhanov/$repoName'
-        : 'https://gitlab.com/Merdzhanov/$repoName';
+        ? 'https://github.com/$repoName'
+        : 'https://gitlab.com/$repoName';
 
     setState(() {
       _isLoading = true;
@@ -412,9 +416,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'ceo');
 
     final decisionChoice = decisionChoiceOverride ??
-        (conceptName.toLowerCase().contains('ephemeraflow')
+        (conceptName == (_ideaA['title'] ?? '')
             ? 'approve_idea_a'
-            : conceptName.toLowerCase().contains('armorguard')
+            : conceptName == (_ideaB['title'] ?? '')
                 ? 'approve_idea_b'
                 : 'custom_idea');
 
@@ -454,17 +458,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_sessionId.isEmpty) return;
     setState(() => _isLoading = true);
     try {
-      await _api.submitCeoDecision(
-        sessionId: _sessionId,
-        decisionChoice: decision,
-        customPrompt: feedback,
-      );
+      final gateMeta = _pendingHitlData['metadata'] as Map<String, dynamic>? ?? {};
+      final gate = gateMeta['gate']?.toString() ?? '';
+
+      if (gate == 'deployment_review' || decision.contains('deploy')) {
+        await _api.submitDeploymentDecision(
+          sessionId: _sessionId,
+          decision: decision,
+        );
+      } else {
+        await _api.submitGateDecision(
+          sessionId: _sessionId,
+          decision: decision,
+          feedback: feedback,
+        );
+      }
       if (!mounted) return;
       setState(() => _pendingHitlData = {});
     } catch (e) {
       _addLog('ERROR: HITL decision failed - $e', 'error');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showSystemPromptDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => SystemPromptDialog(
+        onSubmit: ({
+          required String systemPrompt,
+          required String gitProvider,
+          String? customRepoName,
+        }) async {
+          setState(() {
+            _isLoading = true;
+            _statusText = 'Executing custom system prompt on ${gitProvider.toUpperCase()}...';
+            if (customRepoName != null && customRepoName.isNotEmpty) {
+              _projectName = customRepoName;
+              _nameController.text = customRepoName;
+            }
+          });
+          final firstLine = systemPrompt.split('\n').first;
+          _addLog('CEO Action: Dispatched System Prompt — $firstLine', 'ceo');
+
+          final res = await _api.submitSystemPrompt(
+            systemPrompt: systemPrompt,
+            gitProvider: gitProvider,
+            customRepoName: customRepoName,
+          );
+
+          final newSessionId = res['session_id'] as String? ?? '';
+          if (newSessionId.isNotEmpty) {
+            _sessionId = newSessionId;
+          }
+          final statusMsg = res['message'] ?? 'Workflow initialized.';
+          _addLog('ADK Runner: $statusMsg', 'system');
+          setState(() {
+            _isLoading = false;
+            _statusText = 'Fleet executing custom specification...';
+            _isSessionReady = true;
+          });
+          _startTelemetryPolling();
+        },
+      ),
+    );
   }
 
   void _handleChatSend(String text) {
@@ -629,6 +686,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             isSubmittingIdea: _isSubmittingIdea,
             onTriggerDiscovery: _triggerDiscovery,
             onShowNewIdeaDialog: _showNewIdeaDialog,
+            onShowSystemPromptDialog: _showSystemPromptDialog,
+          ),
+          PipelineStepper(
+            currentStatus: _statusText,
+            activeGate: _pendingHitlData['metadata']?['gate']?.toString(),
           ),
           Expanded(
             child: Row(

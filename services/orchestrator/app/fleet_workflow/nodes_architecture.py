@@ -1,6 +1,7 @@
 """Architecture nodes: synthesis + CEO Architecture Review Gate."""
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from google.adk.events.request_input import RequestInput as AdkRequestInput
@@ -65,12 +66,13 @@ def _commit_architecture_doc(tc, arch: dict) -> dict:
     git_repo = tc.state.get("git_repo") or {}
     repo_name = git_repo.get("repo_name") or (tc.state.get("selected_idea", {}) or {}).get("repo_name")
     provider = str(git_repo.get("provider") or tc.state.get("git_provider") or "github").lower()
+    owner = git_repo.get("owner") or os.getenv("GIT_OWNER") or os.getenv("GITHUB_ACTOR") or "agent-enterprise"
     if not repo_name:
         return {"status": "skipped", "message": "no repo provisioned yet"}
 
     payload = {
         "provider": provider,
-        "owner": "Merdzhanov",
+        "owner": owner,
         "repo_name": repo_name,
         "project_id": git_repo.get("project_id", repo_name),
         "files": [
@@ -112,8 +114,9 @@ async def architect_node(ctx: Any):
             tc.state.get("selected_idea", {}) or {}
         ).get("repo_name", "")
         provider = str((tc.state.get("git_repo") or {}).get("provider") or "github").lower()
+        owner = (tc.state.get("git_repo") or {}).get("owner") or os.getenv("GIT_OWNER") or os.getenv("GITHUB_ACTOR") or "agent-enterprise"
         base = "https://github.com" if provider == "github" else "https://gitlab.com"
-        doc_url = f"{base}/Merdzhanov/{repo_name}/blob/main/docs/ARCHITECTURE.md"
+        doc_url = f"{base}/{owner}/{repo_name}/blob/main/docs/ARCHITECTURE.md"
         tc.state["architecture_doc_url"] = doc_url
         _sync_state(ctx, tc)
 
@@ -174,6 +177,20 @@ async def arch_review_gate_node(ctx: Any):
                 "CEO approved the architecture — proceeding to implementation.",
             )
         ctx.state["pending_request_input"] = {}
+
+        # Dynamic routing based on project stack
+        selected_idea = tc.state.get("selected_idea", {}) or {}
+        tech_stack = [t.lower() for t in (selected_idea.get("tech_stack") or [])]
+        summary_text = (selected_idea.get("summary") or "").lower()
+        title_text = (selected_idea.get("title") or "").lower()
+        combined_spec = " ".join(tech_stack) + " " + summary_text + " " + title_text
+
+        # If dedicated Flutter/Shader project requested and not handled by LeadDev
+        if any(k in combined_spec for k in ["flutter", "glsl", "shader", "raymarching"]) and ctx.state.get("route_to_flutter_node"):
+            ctx.route = "deploy_frontend"
+            yield {"decision": decision, "route": "deploy_frontend"}
+            return
+
         yield {"decision": decision, "route": "leaddev"}
         return
 

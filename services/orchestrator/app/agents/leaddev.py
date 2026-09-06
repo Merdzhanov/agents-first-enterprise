@@ -1,26 +1,18 @@
-"""Lead Dev Agent — iterative file-by-file code generation (Python backend)."""
+"""Lead Dev Agent — dynamic iterative code generation for any project stack."""
 from __future__ import annotations
 
-from typing import List, Optional
+import os
+from typing import Any, Dict, List, Optional
 
 from ..llm import VertexGeminiClient
-from ..schemas import FileRequest
+from ..schemas import FilePlanEntry, FilePlanResponse, FileRequest
 from ..tools import Handoff, ToolContext, execute_dart_task
 from .base import AgentResult
 
 
 class LeadDevAgent:
-    """Executes Iterative File-by-File Code Generation (Option B) for Python backend."""
+    """Executes dynamic file-by-file code scaffolding for any tech stack."""
     name: str = "LeadDevAgent"
-
-    FILE_PLAN: List[FileRequest] = [
-        FileRequest(path="README.md", purpose="System architecture & setup guide", is_critical_for_review=False),
-        FileRequest(path="src/main.py", purpose="FastAPI backend entry point with health probes", is_critical_for_review=True),
-        FileRequest(path="src/agent.py", purpose="Autonomous Agent supervisor logic", is_critical_for_review=True),
-        FileRequest(path="Dockerfile", purpose="Multi-stage production container configuration", is_critical_for_review=True),
-        FileRequest(path="requirements.txt", purpose="Python dependency specifications", is_critical_for_review=False),
-        FileRequest(path="tests/test_main.py", purpose="Automated health check unit tests", is_critical_for_review=False),
-    ]
 
     def __init__(self, llm: Optional[VertexGeminiClient] = None):
         self.llm = llm or VertexGeminiClient()
@@ -30,14 +22,50 @@ class LeadDevAgent:
         arch_spec = context.state.get("architecture_spec", {})
         repo = context.state.get("git_repo", {})
         provider = context.state.get("git_provider", "github")
-        owner = repo.get("owner", "Merdzhanov")
+        owner = repo.get("owner") or os.getenv("GIT_OWNER") or os.getenv("GITHUB_ACTOR") or "agent-enterprise"
         repo_name = repo.get("repo_name", "prototype-repo")
 
-        committed_files = []
-        files_to_commit = []
+        # 1. Determine dynamic file plan
+        file_plan_entries: List[FilePlanEntry] = []
+        entry_point = ""
+        cached_plan = context.state.get("file_plan")
+
+        if cached_plan:
+            if isinstance(cached_plan, dict):
+                file_plan_entries = [
+                    FilePlanEntry(**f) if isinstance(f, dict) else f
+                    for f in cached_plan.get("files", [])
+                ]
+                entry_point = cached_plan.get("entry_point", "")
+            elif hasattr(cached_plan, "files"):
+                file_plan_entries = cached_plan.files
+                entry_point = getattr(cached_plan, "entry_point", "")
+
+        if not file_plan_entries:
+            try:
+                plan_resp = self.llm.generate_file_plan(
+                    idea=selected_idea,
+                    architecture=arch_spec,
+                )
+                file_plan_entries = plan_resp.files
+                entry_point = plan_resp.entry_point
+                context.state["file_plan"] = plan_resp.model_dump()
+            except Exception as e:
+                raise RuntimeError(
+                    f"Dynamic file plan generation failed for '{selected_idea.get('title', repo_name)}': {e}"
+                ) from e
+
+        if not file_plan_entries:
+            raise RuntimeError(
+                f"File plan generated zero files for '{selected_idea.get('title', repo_name)}'. Cannot proceed with empty project."
+            )
+
+        committed_files: List[str] = []
+        files_to_commit: List[Dict[str, Any]] = []
         global_rework = str(context.state.get("rework_feedback") or "")
 
-        for file_req in self.FILE_PLAN:
+        # 2. Iterate through planned files dynamically
+        for file_req in file_plan_entries:
             ceo_feedback = context.state.get(f"feedback_{file_req.path}")
             combined_feedback = global_rework if global_rework else ceo_feedback
 
@@ -50,6 +78,7 @@ class LeadDevAgent:
                     existing_files=committed_files,
                     ceo_feedback=combined_feedback,
                     is_critical=file_req.is_critical_for_review,
+                    language=getattr(file_req, "language", None),
                 )
                 files_to_commit.append({
                     "path": generated.path,
@@ -99,11 +128,13 @@ class LeadDevAgent:
             )
             raise RuntimeError(err_msg)
 
+        resolved_entry = entry_point or (committed_files[0] if committed_files else "main")
         code_deliverables = {
-            "backend_entry": "src/main.py",
+            "entry_point": resolved_entry,
+            "backend_entry": resolved_entry,  # backward compatibility
             "files_committed": committed_files,
             "commit_status": commit_status,
-            "verification_status": "Passed automated unit tests",
+            "verification_status": f"Scaffolded {len(committed_files)} files with verifiable syntax",
         }
         context.state["code_deliverables"] = code_deliverables
         context.state["rework_feedback"] = ""

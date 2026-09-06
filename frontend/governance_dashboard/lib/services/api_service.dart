@@ -342,6 +342,77 @@ class ApiService {
     }
     return decoded;
   }
+
+  /// Submits an arbitrary system prompt (e.g. custom engine/app specification)
+  /// directly executing the autonomous multi-agent fleet.
+  Future<Map<String, dynamic>> submitSystemPrompt({
+    required String systemPrompt,
+    String gitProvider = 'github',
+    String? customRepoName,
+    String? sessionId,
+  }) async {
+    final decoded = await _send(
+      () async => _client
+          .post(
+            Uri.parse('$baseUrl/fleet/system-prompt'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'system_prompt': systemPrompt,
+              'git_provider': gitProvider,
+              'custom_repo_name': customRepoName,
+              'session_id': sessionId,
+            }),
+          )
+          .timeout(const Duration(seconds: 180)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/system-prompt');
+    }
+    return decoded;
+  }
+
+  /// Submits deployment gate decision (approve / reject) with optional target environment.
+  Future<Map<String, dynamic>> submitDeploymentDecision({
+    required String sessionId,
+    required String decision,
+    String targetEnvironment = 'staging',
+  }) async {
+    final decoded = await _send(
+      () async => _client
+          .post(
+            Uri.parse('$baseUrl/fleet/deploy'),
+            headers: await _authHeaders(),
+            body: jsonEncode({
+              'session_id': sessionId,
+              'decision': decision,
+              'target_environment': targetEnvironment,
+            }),
+          )
+          .timeout(const Duration(seconds: 180)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/deploy');
+    }
+    return decoded;
+  }
+
+  /// Generic gate decision submitter for all Human-In-The-Loop approval gates
+  /// (Proposal Choice, Architecture Review, Code Review, Deployment Gate).
+  Future<Map<String, dynamic>> submitGateDecision({
+    required String sessionId,
+    required String decision,
+    String? feedback,
+    String gitProvider = 'github',
+    String? customRepoName,
+  }) async {
+    return submitCeoDecision(
+      sessionId: sessionId,
+      decisionChoice: decision,
+      customPrompt: feedback,
+      gitProvider: gitProvider,
+      customRepoName: customRepoName,
+    );
+  }
 }
 
 /// Convenience extension for converting empty strings to null.

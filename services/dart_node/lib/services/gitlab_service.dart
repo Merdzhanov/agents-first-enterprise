@@ -62,10 +62,13 @@ class GitLabService {
         // Commit initial README.md
         await _commitFile(projectId, 'README.md', readmeContent, 'Initial commit from Agent Fleet');
 
+        final String defaultOwner = Platform.environment['GIT_OWNER'] ??
+            Platform.environment['GITLAB_USER_LOGIN'] ??
+            'agent-enterprise';
         return {
           'status': 'provisioned',
           'provider': 'gitlab',
-          'owner': 'Merdzhanov',
+          'owner': defaultOwner,
           'repo_name': sanitizedName,
           'web_url': data['web_url'],
           'project_id': projectId,
@@ -77,12 +80,15 @@ class GitLabService {
         throw HttpException('GitLab API error (${response.statusCode}): ${response.body}');
       }
     } catch (e) {
+      final String fallbackOwner = Platform.environment['GIT_OWNER'] ??
+          Platform.environment['GITLAB_USER_LOGIN'] ??
+          'agent-enterprise';
       return {
         'status': 'error',
         'provider': 'gitlab',
         'error_type': 'GitLabProvisioningFailed',
         'message': e.toString(),
-        'fallback_url': 'https://gitlab.com/Merdzhanov/$sanitizedName',
+        'fallback_url': 'https://gitlab.com/$fallbackOwner/$sanitizedName',
       };
     }
   }
