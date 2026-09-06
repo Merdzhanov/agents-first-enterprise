@@ -6,8 +6,8 @@ class TopNavBar extends StatelessWidget {
     super.key,
     required this.statusText,
     required this.isLoading,
-    required this.isSubmittingIdea,
     required this.onTriggerDiscovery,
+    required this.isSubmittingIdea,
     required this.onShowNewIdeaDialog,
     required this.onShowSystemPromptDialog,
   });
@@ -50,11 +50,13 @@ class TopNavBar extends StatelessWidget {
               const _NavPill(label: 'Scale-to-Zero'),
               const SizedBox(width: 24),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E293B),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFF38BDF8).withAlpha(60)),
+                  border:
+                      Border.all(color: const Color(0xFF38BDF8).withAlpha(60)),
                 ),
                 child: Row(
                   children: [
@@ -62,7 +64,8 @@ class TopNavBar extends StatelessWidget {
                     const SizedBox(width: 6),
                     SelectableText(
                       statusText,
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF8ED5FF)),
+                      style: const TextStyle(
+                          fontSize: 11, color: Color(0xFF8ED5FF)),
                     ),
                   ],
                 ),
@@ -73,7 +76,8 @@ class TopNavBar extends StatelessWidget {
             children: [
               ElevatedButton.icon(
                 onPressed: isLoading ? null : onTriggerDiscovery,
-                icon: const Icon(Icons.bolt, size: 18, color: Color(0xFF00354A)),
+                icon:
+                    const Icon(Icons.bolt, size: 18, color: Color(0xFF00354A)),
                 label: const SelectableText(
                   'TRIGGER DISCOVERY CYCLE',
                   style: TextStyle(
@@ -94,60 +98,55 @@ class TopNavBar extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: isLoading || isSubmittingIdea ? null : onShowSystemPromptDialog,
-                icon: const Icon(
-                  Icons.terminal,
-                  size: 18,
-                  color: Color(0xFF38BDF8),
-                ),
-                label: const SelectableText(
-                  'SYSTEM PROMPT',
+                onPressed: (isLoading || isSubmittingIdea)
+                    ? null
+                    : onShowNewIdeaDialog,
+                icon: isSubmittingIdea
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Color(0xFFFBBF24)),
+                      )
+                    : const Icon(Icons.lightbulb_outline,
+                        size: 16, color: Color(0xFFFBBF24)),
+                label: const Text(
+                  'NEW CEO IDEA',
                   style: TextStyle(
-                    color: Color(0xFF38BDF8),
+                    color: Color(0xFFFBBF24),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
+                  side:
+                      BorderSide(color: const Color(0xFFFBBF24).withAlpha(80)),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  side: BorderSide(
-                    color: const Color(0xFF38BDF8).withAlpha(180),
-                  ),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4)),
                 ),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: isSubmittingIdea ? null : onShowNewIdeaDialog,
-                icon: Icon(
-                  Icons.lightbulb_outline,
-                  size: 18,
-                  color: isSubmittingIdea
-                      ? const Color(0xFF3E484F)
-                      : const Color(0xFFFBBF24),
-                ),
-                label: SelectableText(
-                  isSubmittingIdea ? 'SUBMITTING...' : '＋ NEW IDEA',
+                onPressed: isLoading ? null : onShowSystemPromptDialog,
+                icon: const Icon(Icons.terminal,
+                    size: 16, color: Color(0xFF8ED5FF)),
+                label: const Text(
+                  'EXECUTE SYSTEM PROMPT',
                   style: TextStyle(
-                    color: isSubmittingIdea
-                        ? const Color(0xFF3E484F)
-                        : const Color(0xFFFBBF24),
+                    color: Color(0xFF8ED5FF),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 0.5,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
+                  side:
+                      BorderSide(color: const Color(0xFF38BDF8).withAlpha(80)),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  side: BorderSide(
-                    color: isSubmittingIdea
-                        ? const Color(0xFF3E484F)
-                        : const Color(0xFFFBBF24).withAlpha(180),
-                  ),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4)),
                 ),
@@ -155,7 +154,8 @@ class TopNavBar extends StatelessWidget {
               const SizedBox(width: 12),
               IconButton(
                 onPressed: () {},
-                icon: const Icon(Icons.settings, color: Color(0xFFBDC8D1), size: 20),
+                icon: const Icon(Icons.settings,
+                    color: Color(0xFFBDC8D1), size: 20),
               ),
               IconButton(
                 onPressed: () {},

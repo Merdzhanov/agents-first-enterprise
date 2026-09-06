@@ -11,9 +11,7 @@ import 'widgets/section_rail.dart';
 import 'widgets/git_target_bar.dart';
 import 'widgets/hackathon_board.dart';
 import 'widgets/logs_sidebar.dart';
-import 'widgets/ceo_proposal_gate.dart';
 import 'widgets/fleet_chat.dart';
-import 'widgets/custom_and_skip_row.dart';
 import 'widgets/repository_status_hub.dart';
 import 'widgets/sessions_panel.dart';
 import 'widgets/memory_panel.dart';
@@ -83,12 +81,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isEditingName = false;
   final TextEditingController _nameController =
       TextEditingController(text: 'autonomous-agent-prototype');
-  final TextEditingController _customDirectiveController =
-      TextEditingController();
 
-  String _statusText = 'No active session — trigger discovery or execute system prompt to begin.';
+  String _statusText =
+      'No active session — trigger discovery or execute system prompt to begin.';
   bool _isLoading = false;
-  bool _isSessionReady = false;
   String _selectedFile = '';
 
   // Active session for telemetry polling. Empty until discovery is triggered.
@@ -117,19 +113,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic> _memoryData = {};
   Map<String, dynamic> _securityData = {};
   Map<String, dynamic> _systemData = {};
-  final TextEditingController _memoryTopicController =
-      TextEditingController();
+  final TextEditingController _memoryTopicController = TextEditingController();
   final TextEditingController _memoryContentController =
       TextEditingController();
-  final TextEditingController _newIdeaController =
-      TextEditingController();
+  final TextEditingController _newIdeaController = TextEditingController();
   bool _isSubmittingIdea = false;
   bool _isRunningScheduledDiscovery = false;
 
   List<Map<String, dynamic>> _logs = [
     {
       'time': 'System Ready',
-      'msg': 'Cloud Run services and Dart nodes initialized in eur3 / europe-west1.',
+      'msg':
+          'Cloud Run services and Dart nodes initialized in eur3 / europe-west1.',
       'type': 'system'
     }
   ];
@@ -147,7 +142,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _telemetryTimer?.cancel();
     _nameController.dispose();
-    _customDirectiveController.dispose();
     _memoryTopicController.dispose();
     _memoryContentController.dispose();
     _newIdeaController.dispose();
@@ -219,7 +213,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           };
           // Parse HITL pending input from session state
           final state = session['state'] as Map<String, dynamic>?;
-          final pendingReq = state?['pending_request_input'] as Map<String, dynamic>?;
+          final pendingReq =
+              state?['pending_request_input'] as Map<String, dynamic>?;
           if (pendingReq != null && pendingReq.containsKey('prompt')) {
             _pendingHitlData = pendingReq;
           } else {
@@ -241,7 +236,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (artifacts.isNotEmpty && mounted) {
             setState(() {
               _artifacts = artifacts;
-              if (_selectedFile.isEmpty || !_artifacts.containsKey(_selectedFile)) {
+              if (_selectedFile.isEmpty ||
+                  !_artifacts.containsKey(_selectedFile)) {
                 _selectedFile = artifacts.keys.first;
               }
             });
@@ -326,15 +322,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (hackathons.isNotEmpty) {
           _selectedHackathonId = hackathons.first['id']?.toString();
         }
-        _statusText = 'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name';
-        _isSessionReady = true;
+        _statusText =
+            'CEO Proposal Gate: Review Concepts & Confirm Provider/Project Name';
       });
       _addLog(
           'Scout Agent: Ranked ${hackathons.length} live hackathons — top 5 now on the Live Hackathon Board.',
           'dart');
       _addLog('Planner Agent: $message', 'agent');
-      _addLog(
-          'RequestInput: Yielded execution loop to Human CEO for decision.',
+      _addLog('RequestInput: Yielded execution loop to Human CEO for decision.',
           'ceo');
     } catch (e) {
       setState(() {
@@ -381,7 +376,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _ideaB = _safeMap(result['idea_b']);
         _activeOpportunity = hackathon;
         _statusText = 'Proposals ready for "${hackathon['title']}"';
-        _isSessionReady = true;
       });
       _addLog(
           'Planner Agent: Generated 2 proposals aligned to "${hackathon['title']}".',
@@ -401,14 +395,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String? decisionChoiceOverride,
   }) async {
     final provider = _selectedProvider.toLowerCase();
-    final repoName = _projectName.trim().isEmpty ? defaultRepo : _projectName.trim();
+    final repoName =
+        _projectName.trim().isEmpty ? defaultRepo : _projectName.trim();
     final repoUrl = _selectedProvider == 'GitHub'
         ? 'https://github.com/$repoName'
         : 'https://gitlab.com/$repoName';
 
     setState(() {
       _isLoading = true;
-      _statusText = 'Executing Pipeline on ${provider.toUpperCase()} for: "$conceptName"...';
+      _statusText =
+          'Executing Pipeline on ${provider.toUpperCase()} for: "$conceptName"...';
     });
 
     _addLog(
@@ -429,7 +425,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         decisionChoice: decisionChoice,
         gitProvider: provider,
         customRepoName: repoName,
-        customPrompt: conceptName.startsWith('Custom Directive:') ? conceptName : null,
+        customPrompt:
+            conceptName.startsWith('Custom Directive:') ? conceptName : null,
       );
     } catch (e) {
       setState(() {
@@ -441,12 +438,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final statusMsg = result['message'] ?? 'Pipeline dispatched.';
-    _addLog('ADK Runner: $statusMsg — provisioning $repoUrl in background.', 'system');
-    _addLog('Telemetry: polling for real execution traces every 3s...', 'system');
+    _addLog('ADK Runner: $statusMsg — provisioning $repoUrl in background.',
+        'system');
+    _addLog(
+        'Telemetry: polling for real execution traces every 3s...', 'system');
 
     setState(() {
       _isLoading = false;
-      _statusText = 'Fleet executing — Architect → Lead Dev → Marketing in progress...';
+      _statusText =
+          'Fleet executing — Architect → Lead Dev → Marketing in progress...';
     });
     // Ensure the telemetry timer is active so real backend traces surface.
     if (_telemetryTimer == null || !_telemetryTimer!.isActive) {
@@ -458,7 +458,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_sessionId.isEmpty) return;
     setState(() => _isLoading = true);
     try {
-      final gateMeta = _pendingHitlData['metadata'] as Map<String, dynamic>? ?? {};
+      final gateMeta =
+          _pendingHitlData['metadata'] as Map<String, dynamic>? ?? {};
       final gate = gateMeta['gate']?.toString() ?? '';
 
       if (gate == 'deployment_review' || decision.contains('deploy')) {
@@ -492,7 +493,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }) async {
           setState(() {
             _isLoading = true;
-            _statusText = 'Executing custom system prompt on ${gitProvider.toUpperCase()}...';
+            _statusText =
+                'Executing custom system prompt on ${gitProvider.toUpperCase()}...';
             if (customRepoName != null && customRepoName.isNotEmpty) {
               _projectName = customRepoName;
               _nameController.text = customRepoName;
@@ -516,7 +518,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           setState(() {
             _isLoading = false;
             _statusText = 'Fleet executing custom specification...';
-            _isSessionReady = true;
           });
           _startTelemetryPolling();
         },
@@ -524,31 +525,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _handleChatSend(String text) {
+  /// Handles a CEO chat message. URLs open in a browser tab; any other text is
+  /// dispatched to the fleet as a full system prompt directive (not just a
+  /// log note) so the pipeline executes the CEO's specification directly.
+  void _handleChatSend(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
-    // URLs open in a browser tab; anything else is appended as a CEO note.
     if (trimmed.startsWith('http')) {
       _launchExternalUrl(trimmed);
       return;
     }
-    _addLog(trimmed, 'ceo');
-  }
 
-  void _skipImplementation() {
     setState(() {
-      _statusText = 'Pipeline Safely Halted (Skipped by CEO)';
+      _isLoading = true;
+      _statusText = 'Dispatching CEO directive to the fleet...';
     });
-    _addLog('CEO Action: Elected to Skip Implementation.', 'skip');
-    _addLog(
-        'Supervisor: Acknowledged Skip command. Updating Firestore state. Zero cloud resources consumed.',
-        'skip');
-  }
+    final preview =
+        trimmed.length > 80 ? '${trimmed.substring(0, 80)}...' : trimmed;
+    _addLog('CEO Directive: $preview', 'ceo');
 
-  void _submitCustomDirective() {
-    final directive = _customDirectiveController.text.trim();
-    if (directive.isEmpty) return;
-    _approveConcept('Custom Directive: $directive', 'custom-enterprise-prototype');
+    try {
+      final res = await _api.submitSystemPrompt(
+        systemPrompt: trimmed,
+        gitProvider: _selectedProvider.toLowerCase(),
+      );
+      final newSessionId = res['session_id']?.toString() ?? '';
+      final statusMsg = res['message'] ?? 'Workflow initialized.';
+      if (!mounted) return;
+      setState(() {
+        if (newSessionId.isNotEmpty) {
+          _sessionId = newSessionId;
+        }
+        _isLoading = false;
+        _statusText = 'Fleet executing CEO directive...';
+      });
+      _addLog('ADK Runner: $statusMsg', 'system');
+      _addLog(
+          'Telemetry: polling for real execution traces every 3s...', 'system');
+      if (_telemetryTimer == null || !_telemetryTimer!.isActive) {
+        _startTelemetryPolling();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _statusText = 'Directive dispatch failed — see execution log';
+      });
+      _addLog('ERROR: CEO directive dispatch failed — $e', 'error');
+    }
   }
 
   void _showNewIdeaDialog() {
@@ -558,12 +582,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (ctx) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           title: const Row(
             children: [
-              Icon(Icons.lightbulb_outline,
-                  color: Color(0xFFFBBF24), size: 20),
+              Icon(Icons.lightbulb_outline, color: Color(0xFFFBBF24), size: 20),
               SizedBox(width: 8),
               Text(
                 'New CEO Idea',
@@ -583,8 +605,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             decoration: const InputDecoration(
               hintText:
                   'Describe your prototype idea — problem, target users, key GCP services...',
-              hintStyle:
-                  TextStyle(fontSize: 13, color: Color(0xFF87929A)),
+              hintStyle: TextStyle(fontSize: 13, color: Color(0xFF87929A)),
               filled: true,
               fillColor: Color(0xFF020617),
               border: OutlineInputBorder(
@@ -613,8 +634,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               child: const Text('Submit Idea',
                   style: TextStyle(
-                      color: Color(0xFF00354A),
-                      fontWeight: FontWeight.w700)),
+                      color: Color(0xFF00354A), fontWeight: FontWeight.w700)),
             ),
           ],
         );
@@ -624,7 +644,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _submitNewIdea(String ideaText) async {
     setState(() => _isSubmittingIdea = true);
-    _addLog('CEO: Submitting independent idea — "${ideaText.substring(0, ideaText.length.clamp(0, 60))}..."',
+    _addLog(
+        'CEO: Submitting independent idea — "${ideaText.substring(0, ideaText.length.clamp(0, 60))}..."',
         'ceo');
     try {
       final result = await _api.submitCeoIdea(
@@ -638,7 +659,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (newSession != null && newSession.isNotEmpty) {
           _sessionId = newSession;
         }
-        _statusText = 'CEO idea accepted — fleet pipeline running in background.';
+        _statusText =
+            'CEO idea accepted — fleet pipeline running in background.';
       });
       _addLog(
           'Planner: Custom directive accepted. Session ${newSession ?? "?"} provisioning in background.',
@@ -735,6 +757,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               isLoading: _isLoading,
               onGateDecision: _handleHitlDecision,
               onSend: _handleChatSend,
+              activeOpportunity: _activeOpportunity,
+              ideaA: _ideaA,
+              ideaB: _ideaB,
+              selectedHackathon: _selectedHackathonId == null
+                  ? null
+                  : _hackathons.firstWhere(
+                      (h) =>
+                          (h['id']?.toString() ?? '') == _selectedHackathonId,
+                      orElse: () => {},
+                    ),
+              onApproveConcept: _approveConcept,
+              onLaunchUrl: _launchExternalUrl,
             ),
           ),
           const SizedBox(height: 24),
@@ -767,28 +801,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               setState(() => _selectedHackathonId = id);
               _generateProposalsForHackathon(id);
             },
-          ),
-          const SizedBox(height: 20),
-          CeoProposalGate(
-            activeOpportunity: _activeOpportunity,
-            ideaA: _ideaA,
-            ideaB: _ideaB,
-            isLoading: _isLoading,
-            isSessionReady: _isSessionReady,
-            onApproveConcept: _approveConcept,
-            onLaunchUrl: _launchExternalUrl,
-            selectedHackathon: _selectedHackathonId == null
-                ? null
-                : _hackathons.firstWhere(
-                    (h) => (h['id']?.toString() ?? '') == _selectedHackathonId,
-                    orElse: () => {},
-                  ),
-          ),
-          const SizedBox(height: 20),
-          CustomAndSkipRow(
-            customDirectiveController: _customDirectiveController,
-            onSubmitCustomDirective: _submitCustomDirective,
-            onSkipImplementation: _skipImplementation,
           ),
           const SizedBox(height: 20),
           RepositoryStatusHub(
@@ -850,7 +862,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _loadSystem();
     }
   }
-
 
   Future<void> _loadSessions({bool silent = false}) async {
     if (!silent) setState(() => _sectionLoading = true);
@@ -924,7 +935,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => _sectionLoading = false);
     }
   }
-
 
   // =========================================================
   // SESSIONS PANEL — full governance registry of fleet sessions
