@@ -393,6 +393,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String conceptName,
     String defaultRepo, {
     String? decisionChoiceOverride,
+    String? feedback,
   }) async {
     final provider = _selectedProvider.toLowerCase();
     final repoName =
@@ -410,6 +411,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _addLog(
         'CEO Action: Approved $conceptName on ${provider.toUpperCase()} with repository name "$repoName".',
         'ceo');
+    if (feedback != null && feedback.isNotEmpty) {
+      _addLog('CEO Feedback: $feedback', 'ceo');
+    }
 
     final decisionChoice = decisionChoiceOverride ??
         (conceptName == (_ideaA['title'] ?? '')
@@ -425,8 +429,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         decisionChoice: decisionChoice,
         gitProvider: provider,
         customRepoName: repoName,
-        customPrompt:
-            conceptName.startsWith('Custom Directive:') ? conceptName : null,
+        customPrompt: feedback,
       );
     } catch (e) {
       setState(() {
@@ -558,6 +561,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
         _isLoading = false;
         _statusText = 'Fleet executing CEO directive...';
+        _ideaA = {};
+        _ideaB = {};
       });
       _addLog('ADK Runner: $statusMsg', 'system');
       _addLog(
