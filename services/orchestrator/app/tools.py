@@ -161,6 +161,8 @@ def propose_ideas_to_ceo(
     options = [
         {
             "id": "approve_idea_a",
+            "value": "approve_idea_a",
+            "label": f"✅ Idea A: {idea_a.get('title', 'Concept A')}",
             "title": f"Idea A: {idea_a.get('title', 'Concept A')}",
             "description": idea_a.get("summary", ""),
             "tech_stack": idea_a.get("tech_stack", []),
@@ -169,6 +171,8 @@ def propose_ideas_to_ceo(
         },
         {
             "id": "approve_idea_b",
+            "value": "approve_idea_b",
+            "label": f"✅ Idea B: {idea_b.get('title', 'Concept B')}",
             "title": f"Idea B: {idea_b.get('title', 'Concept B')}",
             "description": idea_b.get("summary", ""),
             "tech_stack": idea_b.get("tech_stack", []),
@@ -177,12 +181,16 @@ def propose_ideas_to_ceo(
         },
         {
             "id": "custom_idea",
+            "value": "custom_idea",
+            "label": "✏️ Custom Idea",
             "title": "Propose Custom Direction",
             "description": "Provide a custom instruction or requirement for the technical fleet.",
             "requires_text_input": True,
         },
         {
             "id": "skip_implementation",
+            "value": "skip_implementation",
+            "label": "⏭️ Skip Implementation",
             "title": "Skip Implementation",
             "description": "Decline all current proposals and archive this discovery cycle.",
         },

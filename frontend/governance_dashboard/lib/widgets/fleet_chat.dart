@@ -149,7 +149,8 @@ class _FleetChatState extends State<FleetChat> {
         Wrap(
           spacing: 8,
           children: options.map((opt) {
-            final value = opt['value']?.toString() ?? '';
+            final value = opt['value']?.toString() ?? opt['id']?.toString() ?? '';
+            final label = opt['label']?.toString() ?? opt['title']?.toString() ?? value;
             return ElevatedButton(
               onPressed: widget.isLoading
                   ? null
@@ -158,19 +159,18 @@ class _FleetChatState extends State<FleetChat> {
                       _feedback.clear();
                     },
               style: ElevatedButton.styleFrom(
-                backgroundColor: value.contains('approve')
-                    ? const Color(0xFF10B981)
-                    : const Color(0xFF38BDF8),
+                backgroundColor:
+                    value.contains('approve') || value == 'custom_idea'
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFF38BDF8),
                 foregroundColor: const Color(0xFF00354A),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
-              child: Text(opt['label']?.toString() ?? value,
-                  style: const TextStyle(fontSize: 11)),
+              child: Text(label, style: const TextStyle(fontSize: 11)),
             );
-          }).toList(),
-        ),
-      ]),
+          }).toList()),
+        ],
+      ),
     );
   }
 
