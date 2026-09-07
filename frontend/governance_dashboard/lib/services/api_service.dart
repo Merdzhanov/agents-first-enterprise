@@ -208,6 +208,21 @@ class ApiService {
     return decoded;
   }
 
+  /// Returns the latest durable hackathon registry. It is persisted on every
+  /// discovery cycle (manual or scheduled), so the board stays populated
+  /// across orchestrator redeploys without needing a fresh trigger.
+  Future<Map<String, dynamic>> getHackathons() async {
+    final decoded = await _send(
+      () async => _client
+          .get(Uri.parse('$baseUrl/fleet/hackathons'))
+          .timeout(const Duration(seconds: 15)),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/hackathons');
+    }
+    return decoded;
+  }
+
   /// Semantic memory bank listing (tenant-isolated).
   Future<Map<String, dynamic>> getMemories({String? tenantId}) async {
     final qp = tenantId == null

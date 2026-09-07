@@ -51,6 +51,17 @@ async def scout_node(ctx: Any):
         "success" if scout_result.status == "success" else "error",
         f"ADK node: discovery {scout_result.status}.",
     )
+    # Durable registry: persist the full snapshot so the board survives
+    # orchestrator restarts / redeploys until the next discovery cycle.
+    if scout_result.status == "success":
+        try:
+            SESSION_DB.save_hackathons(tc.state.get("discovered_hackathons", []))
+        except Exception as reg_err:
+            SESSION_DB.append_trace(
+                tc.session_id, "ScoutAgent", "error",
+                f"Hackathon registry persist failed: {reg_err}",
+            )
+
     # Long-term memory: record every discovered opportunity (never breaks discovery).
     if scout_result.status == "success":
         opp = tc.state.get("active_opportunity") or {}

@@ -272,6 +272,12 @@ def test_full_hitl_flow_approve_idea_a(
     assert sess["state"]["idea_a"]["title"].startswith("EphemeraFlow")
     assert llm_calls["proposals"] == 1
 
+    # The durable hackathon registry was hydrated by the scout node — the
+    # dashboard can repopulate its board after a redeploy without rediscovery.
+    reg = client.get("/fleet/hackathons").json()
+    assert isinstance(reg["hackathons"], list) and reg["count"] == len(reg["hackathons"])
+    assert any(h["id"] == MOCK_OPPORTUNITY["id"] for h in reg["hackathons"])
+
     # --- Phase 2: CEO decision resumes the REAL ADK Runner ---
     # Multi-gate HITL: proposal → architecture review → code review.
     res = client.post(

@@ -48,6 +48,21 @@ class TraceRecord(Base):
     metadata_json: Mapped[Optional[str]] = mapped_column(Text)
 
 
+class HackathonRegistryRecord(Base):
+    """Durable snapshot of the latest discovered hackathon registry.
+
+    A single 'latest' row is overwritten on every discovery cycle (manual or
+    scheduled). This is what lets the dashboard board stay populated across
+    orchestrator redeploys / clean restarts instead of showing an empty list.
+    """
+
+    __tablename__ = "hackathon_registry"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # "latest"
+    matches_json: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[Optional[str]] = mapped_column(String)
+
+
 def _build_database_url() -> Optional[str]:
     """Determine the database URL for CloudSessionManager.
 
@@ -81,6 +96,7 @@ class CloudSessionManager:
         # In-memory backing store as last-resort fallback (no DB available)
         self._local_sessions: Dict[str, Dict[str, Any]] = {}
         self._local_traces: Dict[str, List[Dict[str, Any]]] = {}
+        self._local_hackathons: List[Dict[str, Any]] = []
 
         if self.database_url:
             try:
@@ -330,6 +346,48 @@ class CloudSessionManager:
                 summaries.append(record)
             summaries.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
             return summaries[:limit]
+
+    def save_hackathons(self, matches: List[Dict[str, Any]]) -> None:
+        """Persists the latest discovery snapshot (replaces the previous one).
+
+        Survives process restarts / Cloud Run redeploys so the hackathon
+        board stays populated until the next discovery cycle refreshes it.
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        matches_json = json.dumps(matches)
+
+        if self._use_db:
+            session = self._get_session()
+            try:
+                record = session.query(HackathonRegistryRecord).filter_by(id="latest").first()
+                if not record:
+                    record = HackathonRegistryRecord(id="latest")
+                    session.add(record)
+                record.matches_json = matches_json
+                record.updated_at = now
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                import sys
+                print(f"⚠️ [CloudSessionManager] save_hackathons failed: {e}", file=sys.stderr)
+            finally:
+                session.close()
+        else:
+            self._local_hackathons = json.loads(json.dumps(matches))
+
+    def list_hackathons(self) -> List[Dict[str, Any]]:
+        """Returns the latest persisted hackathon snapshot (empty if none yet)."""
+        if self._use_db:
+            session = self._get_session()
+            try:
+                record = session.query(HackathonRegistryRecord).filter_by(id="latest").first()
+                if record and record.matches_json:
+                    return json.loads(record.matches_json)
+                return []
+            finally:
+                session.close()
+        else:
+            return json.loads(json.dumps(self._local_hackathons))
 
 
 class VectorMemoryManager:

@@ -137,6 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _startTelemetryPolling();
+    _loadHackathons();
   }
 
   @override
@@ -338,6 +339,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _statusText = 'Backend unreachable — start the orchestrator and retry';
       });
       _addLog('ERROR: Discovery failed — $e', 'error');
+    }
+  }
+
+  /// Hydrates the hackathon board from the durable backend registry so the
+  /// last discovered list survives page reloads / orchestrator redeploys,
+  /// without requiring a fresh discovery trigger.
+  Future<void> _loadHackathons() async {
+    try {
+      final res = await _api.getHackathons();
+      final hackathons = govSafeList(res['hackathons'])
+          .whereType<Map>()
+          .map((h) => _safeMap(h))
+          .toList();
+      if (!mounted || hackathons.isEmpty) return;
+      setState(() {
+        _hackathons = hackathons;
+        // Keep the previous selection if it still exists in the fresh list.
+        final stillSelected = _selectedHackathonId != null &&
+            _hackathons.any((h) =>
+                (h['id']?.toString() ?? '') == _selectedHackathonId);
+        if (!stillSelected) {
+          _selectedHackathonId = hackathons.first['id']?.toString();
+        }
+      });
+    } catch (_) {
+      // Backend unreachable — board stays empty until discovery is triggered.
     }
   }
 

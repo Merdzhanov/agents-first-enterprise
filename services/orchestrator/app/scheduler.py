@@ -41,6 +41,13 @@ class DiscoveryScheduler:
         matches = dart_result.get("matches", [])
         proposals_generated = []
 
+        # Durable registry: keep the last snapshot so the board is non-empty
+        # across clean restarts / redeploys until the next periodic cycle.
+        try:
+            self.session_db.save_hackathons(matches)
+        except Exception as reg_err:
+            print(f"⚠️ [Scheduler] Hackathon registry persist failed: {reg_err}")
+
         for opp in matches:
             opp_id = opp.get("id", "hack_unknown")
             session_id = f"auto_session_{opp_id}"

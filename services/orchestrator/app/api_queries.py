@@ -139,6 +139,21 @@ def system_introspection_endpoint() -> Dict[str, Any]:
     }
 
 
+@router.get("/fleet/hackathons")
+def list_hackathons_endpoint() -> Dict[str, Any]:
+    """Returns the latest durable hackathon registry.
+
+    Persisted on every discovery cycle (manual trigger or the scheduled
+    daily job) so the dashboard board stays populated across orchestrator
+    redeploys / clean restarts without requiring a fresh trigger.
+    """
+    matches = SESSION_DB.list_hackathons()
+    return {
+        "count": len(matches),
+        "hackathons": matches,
+    }
+
+
 @router.post("/fleet/scheduled-discovery")
 async def run_scheduled_discovery() -> Dict[str, Any]:
     """Invoked periodically by Google Cloud Scheduler via Cloud Pub/Sub."""
