@@ -342,6 +342,44 @@ class TestOrchestratorFleet(unittest.TestCase):
         self.assertNotIn("gitlab_repo", context.state)
         self.assertEqual(context.state.get("pipeline_status"), "skipped_by_ceo")
 
+    def test_ceo_decision_custom_idea_adopts_existing_repo(self):
+        """The 'repo already exists' idempotency branch must adopt the existing
+        repo instead of failing — and must not crash on the lazy SESSION_DB
+        import (regression: NameError before planner.py imported it)."""
+        context = ToolContext(session_id="test_session_005")
+        scout = ScoutAgent()
+        scout_result = scout.run(self.mock_feed, context)
+        planner = PlannerAgent()
+        planner.formulate_proposals(scout_result.data, context)
+
+        def _dart_repo_already_exists(endpoint_path, payload=None, *args, **kwargs):
+            if endpoint_path == "tasks/provision-repo":
+                return {
+                    "status": "error",
+                    "message": "Repository 'dup-repo' already exists on GitHub",
+                    "repo_name": "dup-repo",
+                }
+            return _fake_dart(endpoint_path, payload)
+
+        import app.agents.planner as planner_module
+
+        with patch.object(planner_module, "execute_dart_task", _dart_repo_already_exists):
+            result = planner.process_ceo_decision(
+                decision_choice="custom_idea",
+                custom_prompt="Build a procedural 3D web engine with Dart + Flutter.",
+                git_provider="github",
+                custom_repo_name="dup-repo",
+                context=context,
+            )
+
+        self.assertEqual(result.status, "approved_and_provisioned")
+        repo = context.state["git_repo"]
+        self.assertEqual(repo["status"], "provisioned")  # adopted
+        self.assertEqual(repo["repo_name"], "dup-repo")
+        # Adopted fallback web_url is derived from owner + repo name.
+        self.assertIn("dup-repo", repo["web_url"])
+        self.assertEqual(context.state["selected_idea"]["repo_name"], "dup-repo")
+
 
 if __name__ == "__main__":
     unittest.main()

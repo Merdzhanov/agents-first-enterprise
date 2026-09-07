@@ -185,6 +185,11 @@ class PlannerAgent:
             # run), adopt it instead of failing — the workflow can push to an
             # existing repo just fine.
             if "already exists" in raw_message.lower():
+                # Lazy import: planner is imported BY fleet_workflow nodes, so a
+                # module-level import would be circular. At call time both
+                # modules are fully initialized, so this is safe.
+                from ..fleet_workflow.core import SESSION_DB
+
                 SESSION_DB.append_trace(
                     context.session_id,
                     self.name,
