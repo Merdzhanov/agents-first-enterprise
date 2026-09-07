@@ -25,7 +25,8 @@ class ScoutAgent:
 
         top_opportunity = matches[0]
         context.state["active_opportunity"] = top_opportunity
-        context.state["discovered_hackathons"] = matches[:5]
+        # Keep every active match — the UI shows all of them, tabbed by source.
+        context.state["discovered_hackathons"] = matches
 
         return AgentResult(
             agent_name=self.name,

@@ -227,10 +227,11 @@ class TestOrchestratorFleet(unittest.TestCase):
         self.assertEqual(result.handoff.target_agent, "PlannerAgent")
         self.assertIn("active_opportunity", context.state)
 
-    def test_scout_stores_top_five_hackathons_with_links(self):
-        """Dashboard hackathon-board contract: ScoutAgent keeps the ranked
-        top-5 shortlist, and every entry carries title + URL so the UI can
-        deep-link each row to its specific hackathon in a new browser tab."""
+    def test_scout_stores_all_hackathons_with_links(self):
+        """Dashboard hackathon-board contract: ScoutAgent keeps every ranked
+        match (no top-5 truncation — the UI tabs them by source), and every
+        entry carries title + URL so the UI can deep-link each row to its
+        specific hackathon in a new browser tab."""
         context = ToolContext(session_id="test_session_hackathons")
         scout = ScoutAgent()
         result = scout.run(self.mock_feed, context)
@@ -241,7 +242,6 @@ class TestOrchestratorFleet(unittest.TestCase):
         assert isinstance(discovered, list)
         discovered_list: list = discovered
         self.assertGreaterEqual(len(discovered_list), 1)
-        self.assertLessEqual(len(discovered_list), 5)
         for entry in discovered_list:
             self.assertIn("title", entry)
             self.assertIn("url", entry)
