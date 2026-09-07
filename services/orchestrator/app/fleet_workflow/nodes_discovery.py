@@ -117,6 +117,26 @@ async def planner_gate_node(ctx: Any):
         yield {"decision": decision, "repo_name": tc.state.get("git_repo", {}).get("repo_name")}
         return
 
+    # Full system prompt = complete CEO specification. The dual-proposal gate
+    # would be redundant — provision the repo directly and flow straight to the
+    # Architect, whose design lands in the Arch Review gate for approval.
+    system_prompt = tc.state.get("system_prompt")
+    if system_prompt:
+        SESSION_DB.append_trace(
+            tc.session_id, "PlannerAgent", "system",
+            "ADK node: full system prompt detected — skipping CEO Proposal Gate, provisioning repo and routing to Architect.",
+        )
+        PlannerAgent(llm=LLM_CLIENT).process_ceo_decision(
+            decision_choice="custom_idea",
+            custom_prompt=system_prompt,
+            git_provider=tc.state.get("git_provider", "github"),
+            custom_repo_name=tc.state.get("custom_repo_name"),
+            context=tc,
+        )
+        _sync_state(ctx, tc)
+        yield {"decision": "custom_idea", "route": "architect"}
+        return
+
     # First execution: synthesize the dual proposal, then pause.
     planner_result = PlannerAgent(llm=LLM_CLIENT).formulate_proposals(
         tc.state.get("active_opportunity", {}), tc

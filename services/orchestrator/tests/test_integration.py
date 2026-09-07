@@ -351,6 +351,56 @@ def test_full_hitl_flow_approve_idea_a(
     assert arts["submission_package"]["tagline"]
 
 
+
+# ---------------------------------------------------------------------
+# 2b. System-prompt fast-path: the spec IS the decision — the dual-proposal
+#     gate is skipped and the workflow pauses at the Architecture Review.
+# ---------------------------------------------------------------------
+def test_system_prompt_flows_straight_to_arch_review(
+    client: TestClient, mock_dart: None, llm_calls: Dict[str, int]
+) -> None:
+    sid = f"it_{uuid.uuid4().hex[:8]}"
+
+    res = client.post(
+        "/fleet/system-prompt",
+        json={
+            "session_id": sid,
+            "system_prompt": "# SYSTEM PROMPT: Build a procedural 3D rendering engine",
+            "custom_repo_name": "agents_procedural_3d",
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    # Zero proposal LLM spend — no dual-idea synthesis for a full spec.
+    assert llm_calls["proposals"] == 0
+    assert body["status"] == "awaiting_gate_decision"
+    assert not body["data"]["idea_a"] and not body["data"]["idea_b"]
+
+    # The workflow paused at the Architecture Review Gate with a real design.
+    sess = client.get(f"/fleet/session/{sid}").json()
+    assert sess["status"] == "awaiting_gate_decision", sess
+    pending = sess["state"]["pending_request_input"]
+    assert pending["interrupt_id"] == fw.CEO_ARCH_REVIEW_GATE
+    assert sess["state"]["architecture_spec"]["title"].startswith("Cloud Native Architecture")
+    # Repo provisioned directly from the spec (custom_repo_name override).
+    assert sess["state"]["selected_idea"]["repo_name"] == "agents_procedural_3d"
+    assert "mock-org" in sess["state"]["git_repo"]["web_url"]
+
+    # CEO approves the architecture -> LeadDev scaffold -> Code Review gate.
+    res = client.post(
+        "/fleet/ceo-decision",
+        json={"session_id": sid, "decision_choice": "approve_architecture"},
+    )
+    assert res.status_code == 200, res.text
+    sess = client.get(f"/fleet/session/{sid}").json()
+    assert sess["status"] == "awaiting_gate_decision", sess
+    assert (
+        sess["state"]["pending_request_input"]["interrupt_id"] == fw.CEO_CODE_REVIEW_GATE
+    )
+
+
+
+
 # ---------------------------------------------------------------------
 # 3. Skip decision archives the workflow with zero LLM spend after gate
 # ---------------------------------------------------------------------

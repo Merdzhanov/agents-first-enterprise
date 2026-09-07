@@ -98,4 +98,7 @@ class SystemPromptRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, description="Optional session id")
     git_provider: str = Field(default="github", description="github | gitlab")
     tenant_id: str = Field(default="default_enterprise", description="Tenant id")
+    custom_repo_name: Optional[str] = Field(
+        default=None, description="Optional repository name slug"
+    )
 

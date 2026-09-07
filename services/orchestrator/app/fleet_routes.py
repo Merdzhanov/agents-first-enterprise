@@ -137,8 +137,10 @@ async def submit_ceo_idea(req: CeoIdeaRequest, background_tasks: BackgroundTasks
 
 @router.post("/fleet/system-prompt")
 async def submit_system_prompt(req: SystemPromptRequest) -> Dict[str, Any]:
-    """Takes a comprehensive system prompt / project specification, generates
-    two competing architectural approaches via Vertex AI, and enters the CEO proposal gate."""
+    """Executes a full system prompt / project specification end-to-end:
+    skips the dual-proposal gate (the spec IS the decision), provisions the
+    repository, synthesizes the architecture, and pauses at the CEO
+    Architecture Review gate for approval."""
     session_id = req.session_id or f"session_prompt_{int(time.time())}"
 
     SESSION_DB.append_trace(
@@ -154,6 +156,7 @@ async def submit_system_prompt(req: SystemPromptRequest) -> Dict[str, Any]:
                 "system_prompt": req.system_prompt,
                 "git_provider": req.git_provider,
                 "tenant_id": req.tenant_id,
+                "custom_repo_name": req.custom_repo_name,
             },
         )
         idea_a = state.get("idea_a")
@@ -164,19 +167,34 @@ async def submit_system_prompt(req: SystemPromptRequest) -> Dict[str, Any]:
             idea_b = idea_b or proposed.get("idea_b")
 
         reasoning = state.get("planner_reasoning") or (state.get("proposed_ideas") or {}).get("reasoning", "")
-        SESSION_DB.save_session(session_id, "awaiting_ceo_decision", "PlannerAgent", state)
+
+        gate_id = str((pending or {}).get("interrupt_id") or (pending or {}).get("state_key") or "")
+        if idea_a and idea_b:
+            # Defensive: legacy dual-proposal path.
+            status = "awaiting_ceo_decision"
+            message = "Generated 2 competing implementation approaches for the system prompt."
+        elif gate_id:
+            status = "awaiting_gate_decision"
+            message = "System prompt accepted — repository provisioned, architecture awaiting CEO review."
+        else:
+            status = "processing_in_background"
+            message = "System prompt accepted — fleet executing in background."
+
+        SESSION_DB.save_session(session_id, status, "PlannerAgent", state)
 
         return {
             "session_id": session_id,
-            "status": "awaiting_ceo_decision",
+            "status": status,
             "execution_mode": "adk_runner",
             "data": {
                 "idea_a": idea_a,
                 "idea_b": idea_b,
                 "reasoning": reasoning,
+                "selected_idea": state.get("selected_idea"),
+                "git_repo": state.get("git_repo"),
             },
             "request_input": pending,
-            "message": "Generated 2 competing implementation approaches for the system prompt.",
+            "message": message,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process system prompt: {e}") from e
