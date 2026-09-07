@@ -232,11 +232,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
         }
       });
-      // Fetch artifacts when pipeline completes OR when paused at a gate
-      // (architecture doc is committed before the gate, so the repo section
-      // should populate immediately — not only on completion).
-      final shouldFetchArtifacts = (session['status'] ?? '').toString() == 'completed' ||
-          (session['status'] ?? '').toString() == 'awaiting_gate_decision';
+      // Fetch artifacts whenever the pipeline is active — repo provisioning
+      // happens early (during CEO decision processing), so the repo URL and
+      // commit info should surface immediately, not only at gates or completion.
+      final sessStatus = (session['status'] ?? '').toString();
+      final shouldFetchArtifacts = sessStatus == 'completed' ||
+          sessStatus == 'awaiting_gate_decision' ||
+          sessStatus == 'awaiting_ceo_decision' ||
+          sessStatus == 'executing' ||
+          sessStatus == 'deploying' ||
+          sessStatus == 'processing_in_background';
       if (shouldFetchArtifacts) {
         try {
           final artifacts = await _api.getSessionArtifacts(_sessionId);
