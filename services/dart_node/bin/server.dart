@@ -9,6 +9,7 @@ import '../lib/services/brief_parser.dart';
 import '../lib/services/devpost_service.dart';
 import '../lib/services/gitlab_service.dart';
 import '../lib/services/github_service.dart';
+import '../lib/services/lablab_service.dart';
 
 void main() async {
   final port = int.parse(Platform.environment['PORT'] ?? '8080');
@@ -18,10 +19,11 @@ void main() async {
   final devpostService = DevpostService();
   final gitLabService = GitLabService();
   final gitHubService = GitHubService();
+  final lablabService = LablabService();
 
   final router = Router()
     ..get('/health', _healthCheckHandler)
-    ..post('/tasks/parse-brief', (Request req) => _parseBriefHandler(req, briefParser, devpostService))
+    ..post('/tasks/parse-brief', (Request req) => _parseBriefHandler(req, briefParser, devpostService, lablabService))
     ..post('/tasks/provision-repo', (Request req) => _provisionRepoHandler(req, gitLabService, gitHubService))
     ..post('/tasks/commit-files', (Request req) => _commitFilesHandler(req, gitLabService, gitHubService))
     ..post('/webhooks/pubsub', _pubsubWebhookHandler);
@@ -50,6 +52,7 @@ Future<Response> _parseBriefHandler(
   Request request,
   BriefParserService parser,
   DevpostService devpost,
+  LablabService lablab,
 ) async {
   try {
     final payloadString = await request.readAsString();
@@ -59,17 +62,41 @@ Future<Response> _parseBriefHandler(
     }
 
     final rawHackathons = body['hackathons'];
-    if (rawHackathons == null || (rawHackathons is List && rawHackathons.isEmpty)) {
-      // Direct live discovery via DevpostService function
-      final result = await devpost.fetchAndFilterHackathons(
-        minPrizePool: body['min_prize_pool'] ?? 1000,
-        requireOnline: body['require_online'] ?? true,
-      );
+    if (rawHackathons is List && rawHackathons.isNotEmpty) {
+      // Pre-seeded opportunity/prompt — parse deterministically without
+      // hitting live discovery sources.
+      final result = parser.parseAndFilterOpportunities(body);
       return Response.ok(jsonEncode(result));
     }
 
-    final result = parser.parseAndFilterOpportunities(body);
-    return Response.ok(jsonEncode(result));
+    // Fetch from both services in parallel
+    final devpostFuture = devpost.fetchAndFilterHackathons(
+      minPrizePool: body['min_prize_pool'] ?? 1000,
+      requireOnline: body['require_online'] ?? true,
+    );
+    final lablabFuture = lablab.fetchAndScrapeHackathons();
+
+    final results = await Future.wait([devpostFuture, lablabFuture]);
+
+    final devpostResult = results[0] as Map<String, dynamic>;
+    final lablabMatches = results[1] as List<Map<String, dynamic>>;
+
+    // Combine the matches from both sources
+    final allMatches = List<Map<String, dynamic>>.from(devpostResult['matches'] ?? [])..addAll(lablabMatches);
+
+    // Sort by prize pool, descending
+    allMatches.sort((a, b) => (b['prize_pool'] as int).compareTo(a['prize_pool'] as int));
+
+    final combinedResult = {
+      'status': 'success',
+      'source': 'combined_live_api',
+      'total_evaluated': (devpostResult['total_evaluated'] as int? ?? 0) + lablabMatches.length,
+      'filtered_count': allMatches.length,
+      'matches': allMatches,
+      'timestamp': DateTime.now().toUtc().toIso8601String(),
+    };
+
+    return Response.ok(jsonEncode(combinedResult));
   } catch (e, st) {
     print('Error in parseBrief: $e\n$st');
     return Response.internalServerError(

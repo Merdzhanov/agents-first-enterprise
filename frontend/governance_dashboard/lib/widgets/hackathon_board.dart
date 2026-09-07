@@ -65,7 +65,7 @@ class HackathonBoard extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 SelectableText(
-                  hackathons.isEmpty ? 'AWAITING DISCOVERY' : 'LIVE · DEVPOST',
+                  hackathons.isEmpty ? 'AWAITING DISCOVERY' : 'LIVE · DEVPOST + LABLAB',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -184,13 +184,15 @@ class HackathonBoard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 8),
-              const Row(
+              Row(
                 children: [
-                  Icon(Icons.open_in_new, size: 12, color: Color(0xFF38BDF8)),
-                  SizedBox(width: 4),
+                  const Icon(Icons.open_in_new, size: 12, color: Color(0xFF38BDF8)),
+                  const SizedBox(width: 4),
                   SelectableText(
-                    'View on Devpost',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF38BDF8)),
+                    (hackathon['source'] ?? '').toString() == 'lablab'
+                        ? 'View on Lablab.ai'
+                        : 'View on Devpost',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF38BDF8)),
                   ),
                 ],
               ),
