@@ -167,18 +167,22 @@ class ApiService {
     }).toList();
   }
 
-  /// Fetches committed artifacts (code files, docs) for a completed session.
-  /// Returns a map of filename → file content from the backend.
-  Future<Map<String, String>> getSessionArtifacts(String sessionId) async {
+  /// Fetches the generated deliverables for a session (architecture, repo,
+  /// committed files, submission). Used to populate the Repository Status
+  /// Hub while the pipeline is paused at a gate — not only on completion.
+  Future<Map<String, dynamic>> getSessionArtifacts(String sessionId) async {
     final decoded = await _send(
       () async => _client
-          .get(Uri.parse('$baseUrl/fleet/session/$sessionId/artifacts'))
-          .timeout(const Duration(seconds: 15)),
+          .get(
+            Uri.parse('$baseUrl/fleet/session/$sessionId/artifacts'),
+            headers: await _authHeaders(),
+          )
+          .timeout(const Duration(seconds: 30)),
     );
-    if (decoded is! Map) {
-      throw ApiException('Unexpected response shape from artifacts endpoint');
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Unexpected response shape from /fleet/session/$sessionId/artifacts');
     }
-    return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
+    return decoded;
   }
 
   /// Fetches the current session record (status + pipeline state) so the UI can
@@ -428,6 +432,7 @@ class ApiService {
       customRepoName: customRepoName,
     );
   }
+
 }
 
 /// Convenience extension for converting empty strings to null.

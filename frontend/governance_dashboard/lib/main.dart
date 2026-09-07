@@ -132,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Real artifacts from the backend — populated after CEO approval.
   Map<String, String> _artifacts = {};
+  String _architectureDocUrl = '';
 
   @override
   void initState() {
@@ -231,16 +232,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
           }
         }
       });
-      // Fetch real artifacts when pipeline completes (outside setState).
-      if ((session['status'] ?? '').toString() == 'completed') {
+      // Fetch artifacts when pipeline completes OR when paused at a gate
+      // (architecture doc is committed before the gate, so the repo section
+      // should populate immediately — not only on completion).
+      final shouldFetchArtifacts = (session['status'] ?? '').toString() == 'completed' ||
+          (session['status'] ?? '').toString() == 'awaiting_gate_decision';
+      if (shouldFetchArtifacts) {
         try {
           final artifacts = await _api.getSessionArtifacts(_sessionId);
           if (artifacts.isNotEmpty && mounted) {
+            // Extract committed files into a path→content map for the repo hub.
+            final committedFiles = artifacts['committed_files'];
+            final fileMap = <String, String>{};
+            if (committedFiles is List) {
+              for (final f in committedFiles) {
+                if (f is Map) {
+                  final path = (f['path'] ?? '').toString();
+                  final content = (f['content'] ?? '').toString();
+                  if (path.isNotEmpty) fileMap[path] = content;
+                }
+              }
+            }
+            // Also include the architecture doc URL if available.
+            final archDocUrl = (artifacts['architecture_doc_url'] ?? '').toString();
+            final archSpec = artifacts['architecture_spec'];
+            String archContent = '';
+            if (archSpec is Map) {
+              archContent = (archSpec['markdown'] ?? archSpec['content'] ?? '').toString();
+              if (archContent.isEmpty) {
+                // Fallback: reconstruct from spec fields
+                final title = (archSpec['title'] ?? 'System Architecture').toString();
+                final compute = (archSpec['compute_target'] ?? 'n/a').toString();
+                final components = (archSpec['components'] as List<dynamic>? ?? [])
+                    .map((c) => c is Map ? (c['name'] ?? '').toString() : c.toString())
+                    .where((s) => s.isNotEmpty)
+                    .join(', ');
+                archContent = '# $title\n\n**Compute:** $compute\n\n**Components:** $components';
+              }
+              if (archContent.isNotEmpty) {
+                fileMap['docs/ARCHITECTURE.md'] = archContent;
+              }
+            }
             setState(() {
-              _artifacts = artifacts;
-              if (_selectedFile.isEmpty ||
-                  !_artifacts.containsKey(_selectedFile)) {
-                _selectedFile = artifacts.keys.first;
+              if (fileMap.isNotEmpty) {
+                _artifacts = {...fileMap, ..._artifacts};
+                if (_selectedFile.isEmpty || !_artifacts.containsKey(_selectedFile)) {
+                  _selectedFile = fileMap.keys.first;
+                }
+              }
+              if (archDocUrl.isNotEmpty) {
+                _architectureDocUrl = archDocUrl;
               }
             });
           }
@@ -895,6 +936,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onLaunchUrl: _launchExternalUrl,
               pureIdeaMode: _pureIdeaMode,
               onPureIdeaModeChanged: (v) => setState(() => _pureIdeaMode = v),
+              architectureDocUrl: _architectureDocUrl,
             ),
           ),
           const SizedBox(height: 24),

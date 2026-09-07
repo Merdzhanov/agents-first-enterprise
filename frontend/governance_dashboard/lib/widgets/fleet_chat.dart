@@ -19,6 +19,7 @@ class FleetChat extends StatefulWidget {
   final ValueChanged<String> onLaunchUrl;
   final bool pureIdeaMode;
   final ValueChanged<bool> onPureIdeaModeChanged;
+  final String architectureDocUrl;
 
   const FleetChat({
     super.key,
@@ -35,6 +36,7 @@ class FleetChat extends StatefulWidget {
     required this.onLaunchUrl,
     required this.pureIdeaMode,
     required this.onPureIdeaModeChanged,
+    this.architectureDocUrl = '',
   });
 
   @override
@@ -419,6 +421,40 @@ class _FleetChatState extends State<FleetChat> {
             SelectableText(
               'Title: ${arch['title'] ?? 'n/a'}\nCompute: ${arch['compute_target'] ?? 'n/a'}\nComponents: $comps',
               style: const TextStyle(fontSize: 11, color: Color(0xFFA7F3D0)),
+            ),
+          ],
+          // Architecture doc link — opens the full committed doc in GitHub/GitLab
+          if (widget.architectureDocUrl.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () => widget.onLaunchUrl(widget.architectureDocUrl),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF020617).withAlpha(150),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF38BDF8).withAlpha(40)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.description, size: 14, color: Color(0xFF38BDF8)),
+                    SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'View full architecture doc',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF38BDF8),
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 4),
+                    Icon(Icons.open_in_new, size: 11, color: Color(0xFF38BDF8)),
+                  ],
+                ),
+              ),
             ),
           ],
           const SizedBox(height: 12),
