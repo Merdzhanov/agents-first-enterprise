@@ -531,11 +531,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Handles a CEO chat message. URLs open in a browser tab; any other text is
   /// dispatched to the fleet as a full system prompt directive (not just a
   /// log note) so the pipeline executes the CEO's specification directly.
+  /// Handles a CEO chat message:
+  ///  - URLs open in a browser tab.
+  ///  - At the CEO Proposal Gate with a live session, the text is a CUSTOM
+  ///    DIRECTION: it resumes the CURRENT session (keeping the selected
+  ///    hackathon and its full context in state) via the custom_idea path —
+  ///    repo provisioning + straight to the Architect.
+  ///  - At other HITL gates, it is recorded as a CEO note (decisions belong
+  ///    to the explicit gate buttons).
+  ///  - With no active session, it is dispatched as a full system prompt.
   void _handleChatSend(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
     if (trimmed.startsWith('http')) {
       _launchExternalUrl(trimmed);
+      return;
+    }
+
+    final gateMeta = _pendingHitlData['metadata'] as Map<String, dynamic>? ?? {};
+    final gate = gateMeta['gate']?.toString() ?? '';
+    final interruptId = _pendingHitlData['interrupt_id']?.toString() ?? '';
+    final atProposalGate = gate.isEmpty &&
+        interruptId != 'ceo_arch_review_gate' &&
+        interruptId != 'ceo_code_review_gate' &&
+        interruptId != 'ceo_deployment_gate';
+
+    if (_sessionId.isNotEmpty && _pendingHitlData.isNotEmpty) {
+      if (atProposalGate) {
+        await _dispatchCustomDirection(trimmed);
+      } else {
+        _addLog(
+            'CEO note (gate active — use the gate buttons to decide): $trimmed',
+            'ceo');
+      }
+      return;
+    }
+    if (_sessionId.isNotEmpty && (_ideaA.isNotEmpty || _ideaB.isNotEmpty)) {
+      // Proposals are on screen but the pending-gate mirror has not arrived
+      // via telemetry yet — the session is still paused at the proposal gate.
+      await _dispatchCustomDirection(trimmed);
       return;
     }
 
@@ -577,6 +611,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _statusText = 'Directive dispatch failed — see execution log';
       });
       _addLog('ERROR: CEO directive dispatch failed — $e', 'error');
+    }
+  }
+
+  /// Sends the chat text as the CEO custom direction for the CURRENT session:
+  /// the ADK runner resumes the proposal gate with decision=custom_idea,
+  /// provisions the repo and flows to the Architect with the full hackathon
+  /// context (already in session state) plus this directive.
+  Future<void> _dispatchCustomDirection(String directive) async {
+    setState(() {
+      _isLoading = true;
+      _statusText =
+          'Dispatching custom direction — provisioning repo and synthesizing architecture...';
+    });
+    final preview =
+        directive.length > 80 ? '${directive.substring(0, 80)}...' : directive;
+    _addLog('CEO Direction: $preview', 'ceo');
+
+    try {
+      await _api.submitCeoDecision(
+        sessionId: _sessionId,
+        decisionChoice: 'custom_idea',
+        customPrompt: directive,
+        gitProvider: _selectedProvider.toLowerCase(),
+        customRepoName: _projectName.trim().isNotEmpty ? _projectName.trim() : null,
+      );
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _pendingHitlData = {};
+        _ideaA = {};
+        _ideaB = {};
+        _statusText = 'Fleet executing custom direction — Architect synthesizing...';
+      });
+      _addLog(
+          'ADK Runner: custom direction accepted — Architect is designing the system with the full hackathon context.',
+          'system');
+      _addLog(
+          'Telemetry: polling for real execution traces every 3s...', 'system');
+      if (_telemetryTimer == null || !_telemetryTimer!.isActive) {
+        _startTelemetryPolling();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _statusText = 'Direction dispatch failed — see execution log';
+      });
+      _addLog('ERROR: CEO direction dispatch failed — $e', 'error');
     }
   }
 

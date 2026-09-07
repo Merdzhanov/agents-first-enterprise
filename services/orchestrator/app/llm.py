@@ -204,12 +204,15 @@ class VertexGeminiClient:
         title = idea.get("title", "Enterprise Prototype")
         repo_name = idea.get("repo_name", "prototype-repo")
         tech_stack = idea.get("tech_stack", [])
+        summary = idea.get("summary", "")
 
         prompt = (
             f"Design the complete system architecture for: \"{title}\".\n"
             f"Tech Stack: {', '.join(tech_stack)}\n"
             f"Target Provider: {git_provider}\n"
             f"Repo Name: {repo_name}\n\n"
+            f"## Full specification (CEO directive + hackathon context — MUST be honored)\n"
+            f"{summary or 'No additional specification provided.'}\n\n"
             f"Requirements:\n"
             f"- Tailor compute, storage, and runtime targets directly to the project's actual tech stack and requirements.\n"
             f"- For cloud backends/APIs: specify appropriate Google Cloud services (Cloud Run, Cloud SQL, Pub/Sub, etc.).\n"

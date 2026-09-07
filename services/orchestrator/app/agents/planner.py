@@ -95,13 +95,54 @@ class PlannerAgent:
         elif decision_choice == "approve_idea_b":
             selected_idea = context.state.get("idea_b", {})
         elif decision_choice == "custom_idea" or custom_prompt:
+            # Enrich the directive with the full hackathon/opportunity context
+            # (title, rules, deadline, prize, tracks) so the Architect and every
+            # downstream agent design against the REAL target, not just the
+            # raw CEO text.
+            opp = context.state.get("active_opportunity", {}) or {}
+            opp_title = str(opp.get("title") or "").strip()
+            directive = custom_prompt or "Custom CEO directive"
+
+            context_lines: list[str] = []
+            if opp_title:
+                context_lines.append(f"Target hackathon: {opp_title}")
+                if opp.get("url"):
+                    context_lines.append(f"URL: {opp['url']}")
+                if opp.get("submission_deadline"):
+                    context_lines.append(f"Submission deadline: {opp['submission_deadline']}")
+                if opp.get("prize_pool"):
+                    context_lines.append(f"Prize pool: ${opp['prize_pool']}")
+                tracks = opp.get("tracks") or []
+                if tracks:
+                    context_lines.append(f"Tracks: {', '.join(str(t) for t in tracks)}")
+                reqs = opp.get("requirements") or opp.get("rules") or []
+                if isinstance(reqs, str):
+                    reqs = [reqs]
+                if reqs:
+                    context_lines.append("Requirements / rules:")
+                    context_lines.extend(f"- {r}" for r in reqs)
+
+            if context_lines:
+                full_summary = (
+                    f"{directive}\n\n"
+                    "--- HACKATHON CONTEXT (MUST be honored by every agent) ---\n"
+                    + "\n".join(context_lines)
+                )
+                display_title = f"Custom Build — {opp_title}"
+            else:
+                full_summary = directive
+                display_title = "Custom Executive Prototype"
+
             selected_idea = {
                 "id": "idea_custom",
-                "title": "Custom Executive Prototype",
-                "summary": custom_prompt or "Custom CEO directive",
+                "title": display_title,
+                "summary": full_summary,
                 "tech_stack": ["Google Cloud", "ADK 2.0", "Dart", "Cloud SQL"],
                 "impact": "Direct Executive Alignment",
                 "repo_name": "custom-enterprise-prototype",
+                "hackathon_title": opp_title or None,
+                "hackathon_url": opp.get("url"),
+                "hackathon_deadline": opp.get("submission_deadline"),
             }
         else:
             selected_idea = context.state.get("idea_a", {})
