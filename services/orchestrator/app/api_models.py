@@ -18,6 +18,9 @@ DecisionChoice = Literal[
     "revise_architecture",
     "approve_code",
     "request_changes",
+    # Repo decision gate:
+    "use_existing_repo",
+    "create_new_repo",
 ]
 
 

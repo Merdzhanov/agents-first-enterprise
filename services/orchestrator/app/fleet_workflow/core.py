@@ -14,6 +14,7 @@ from ..tools import ToolContext
 
 # Interrupt IDs (stable contract with the FastAPI layer and the CEO UI).
 CEO_DECISION_GATE = "ceo_decision_gate"
+CEO_REPO_DECISION_GATE = "ceo_repo_decision_gate"
 CEO_ARCH_REVIEW_GATE = "ceo_arch_review_gate"
 CEO_CODE_REVIEW_GATE = "ceo_code_review_gate"
 CEO_DEPLOYMENT_GATE = "ceo_deployment_gate"

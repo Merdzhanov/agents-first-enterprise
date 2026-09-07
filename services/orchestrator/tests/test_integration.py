@@ -289,6 +289,7 @@ def test_full_hitl_flow_approve_idea_a(
 
     # TestClient executes background tasks synchronously -> the workflow ran
     # until it paused at the NEXT human gate: the Architecture Review Gate.
+    # (Mock Dart provisions a fresh repo — no "already exists" conflict.)
     sess = client.get(f"/fleet/session/{sid}").json()
     assert sess["status"] == "awaiting_gate_decision", sess
     pending = sess["state"]["pending_request_input"]

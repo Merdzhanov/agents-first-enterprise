@@ -181,23 +181,12 @@ class PlannerAgent:
         repo_status = str(dart_repo_result.get("status", ""))
         if repo_status != "provisioned" or not dart_repo_result.get("web_url"):
             raw_message = str(dart_repo_result.get("message", repo_status))
-            # Idempotency: if the repository already exists (e.g. from a previous
-            # run), adopt it instead of failing — the workflow can push to an
-            # existing repo just fine.
+            # Repository already exists — pause and ask the CEO whether to
+            # adopt it or spin up a fresh repo under a different name.
             if "already exists" in raw_message.lower():
-                # Lazy import: planner is imported BY fleet_workflow nodes, so a
-                # module-level import would be circular. At call time both
-                # modules are fully initialized, so this is safe.
-                from ..fleet_workflow.core import SESSION_DB
+                from ..fleet_workflow.core import SESSION_DB, CEO_REPO_DECISION_GATE
 
-                SESSION_DB.append_trace(
-                    context.session_id,
-                    self.name,
-                    "warning",
-                    f"Repository '{final_repo_name}' already exists — adopting existing repo.",
-                )
-                dart_repo_result = {
-                    "status": "provisioned",
+                existing_repo = {
                     "repo_name": final_repo_name,
                     "provider": normalized_provider,
                     "owner": owner,
@@ -206,14 +195,32 @@ class PlannerAgent:
                         if normalized_provider == "github"
                         else f"https://gitlab.com/{owner}/{final_repo_name}"
                     ),
-                    "message": "Adopted pre-existing repository.",
                 }
-            else:
-                err_msg = (
-                    f"Repository provisioning FAILED for '{final_repo_name}' on "
-                    f"{normalized_provider.upper()}: {raw_message}"
+                context.state["existing_repo"] = existing_repo
+                SESSION_DB.append_trace(
+                    context.session_id,
+                    self.name,
+                    "warning",
+                    f"Repository '{final_repo_name}' already exists — pausing for CEO decision.",
                 )
-                raise RuntimeError(err_msg)
+                raise RequestInput(
+                    prompt=f"Repository '{final_repo_name}' already exists on {normalized_provider.upper()}. What would you like to do?",
+                    state_key=CEO_REPO_DECISION_GATE,
+                    options=[
+                        {"label": "✅ Use existing repo", "value": "use_existing_repo"},
+                        {"label": "🆕 Create new repo (different name)", "value": "create_new_repo"},
+                    ],
+                    metadata={
+                        "gate": "repo_decision",
+                        "existing_repo": existing_repo,
+                    },
+                )
+
+            err_msg = (
+                f"Repository provisioning FAILED for '{final_repo_name}' on "
+                f"{normalized_provider.upper()}: {raw_message}"
+            )
+            raise RuntimeError(err_msg)
         context.state["git_repo"] = dart_repo_result
         context.state["gitlab_repo"] = dart_repo_result
 

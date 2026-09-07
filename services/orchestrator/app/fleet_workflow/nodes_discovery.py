@@ -7,8 +7,10 @@ from google.adk.events.request_input import RequestInput as AdkRequestInput
 from google.adk.workflow import node
 
 from ..agents import PlannerAgent, ScoutAgent
+from ..tools import RequestInput
 from .core import (
     CEO_DECISION_GATE,
+    CEO_REPO_DECISION_GATE,
     LLM_CLIENT,
     MEMORY_DB,
     SESSION_DB,
@@ -82,21 +84,98 @@ async def scout_node(ctx: Any):
 
 @node(name="planner_gate_node", rerun_on_resume=True)
 async def planner_gate_node(ctx: Any):
-    """CEO Proposal Gate — pauses the workflow for the Human-in-the-Loop decision."""
+    """CEO Proposal Gate — pauses the workflow for the Human-in-the-Loop decision.
+    Also resolves the repo-adoption decision when the provisioned repository
+    already exists (use existing vs create fresh under a different name)."""
     tc = _tool_ctx(ctx)
     resume = dict(ctx.resume_inputs or {})
+
+    # --- Repo adoption decision (raised as RequestInput by process_ceo_decision) ---
+    if CEO_REPO_DECISION_GATE in resume:
+        payload = resume[CEO_REPO_DECISION_GATE] or {}
+        decision = payload.get("decision", "use_existing_repo")
+
+        if decision == "create_new_repo":
+            # CEO wants a fresh repo — the new name arrives via the feedback field.
+            new_name = str(payload.get("feedback") or payload.get("custom_prompt") or "").strip()
+            if not new_name:
+                pending = {
+                    "interrupt_id": CEO_REPO_DECISION_GATE,
+                    "state_key": CEO_REPO_DECISION_GATE,
+                    "prompt": "Please provide a new unique repository name.",
+                    "options": [
+                        {"label": "✅ Use existing repo", "value": "use_existing_repo"},
+                        {"label": "🆕 Create new repo (different name)", "value": "create_new_repo"},
+                    ],
+                    "metadata": {"gate": "repo_decision", "ask_for_name": True, "existing_repo": tc.state.get("existing_repo", {})},
+                }
+                ctx.state["pending_request_input"] = pending
+                SESSION_DB.append_trace(tc.session_id, "PlannerAgent", "hitl", "ADK node: repo name required.")
+                yield AdkRequestInput(
+                    interrupt_id=CEO_REPO_DECISION_GATE,
+                    message=pending["prompt"],
+                    payload={"options": pending["options"], "metadata": pending["metadata"]},
+                )
+                return
+
+            PlannerAgent(llm=LLM_CLIENT).process_ceo_decision(
+                decision_choice="custom_idea",
+                custom_prompt=(tc.state.get("selected_idea", {}) or {}).get("summary", ""),
+                git_provider=payload.get("git_provider", "github"),
+                custom_repo_name=new_name,
+                context=tc,
+            )
+            ctx.state["pending_request_input"] = {}
+            _sync_state(ctx, tc)
+            yield {"decision": "create_new_repo", "repo_name": new_name}
+            return
+
+        # Default: use existing repo.
+        existing = tc.state.get("existing_repo", {}) or {}
+        tc.state["git_repo"] = existing
+        selected_idea = tc.state.get("selected_idea", {}) or {}
+        selected_idea["repo_name"] = existing.get("repo_name")
+        selected_idea["git_provider"] = existing.get("provider")
+        tc.state["selected_idea"] = selected_idea
+        ctx.state["pending_request_input"] = {}
+        _sync_state(ctx, tc)
+        yield {"decision": "use_existing_repo", "repo_name": existing.get("repo_name")}
+        return
 
     if CEO_DECISION_GATE in resume:
         payload = resume[CEO_DECISION_GATE] or {}
         decision = payload.get("decision", "approve_idea_a")
         SESSION_DB.append_trace(tc.session_id, "CEO", "ceo", f"ADK resume: CEO decision '{decision}'.")
-        result = PlannerAgent(llm=LLM_CLIENT).process_ceo_decision(
-            decision_choice=decision,
-            custom_prompt=payload.get("custom_prompt"),
-            git_provider=payload.get("git_provider", "github"),
-            custom_repo_name=payload.get("custom_repo_name"),
-            context=tc,
-        )
+        try:
+            result = PlannerAgent(llm=LLM_CLIENT).process_ceo_decision(
+                decision_choice=decision,
+                custom_prompt=payload.get("custom_prompt"),
+                git_provider=payload.get("git_provider", "github"),
+                custom_repo_name=payload.get("custom_repo_name"),
+                context=tc,
+            )
+        except RequestInput as repo_req:
+            # Repository already exists → pause and ask the CEO how to proceed.
+            SESSION_DB.append_trace(
+                tc.session_id, "PlannerAgent", "hitl",
+                "ADK node: pausing at Repo Decision Gate (repository already exists).",
+            )
+            pending = {
+                "interrupt_id": CEO_REPO_DECISION_GATE,
+                "state_key": CEO_REPO_DECISION_GATE,
+                "prompt": repo_req.prompt,
+                "options": repo_req.options,
+                "metadata": repo_req.metadata,
+            }
+            ctx.state["pending_request_input"] = pending
+            _sync_state(ctx, tc)
+            yield AdkRequestInput(
+                interrupt_id=CEO_REPO_DECISION_GATE,
+                message=repo_req.prompt,
+                payload={"options": repo_req.options, "metadata": repo_req.metadata},
+                response_schema=None,
+            )
+            return
         _sync_state(ctx, tc)
         if result.status == "skipped":
             try:

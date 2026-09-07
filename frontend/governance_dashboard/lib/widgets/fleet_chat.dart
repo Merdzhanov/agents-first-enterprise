@@ -46,6 +46,7 @@ class FleetChat extends StatefulWidget {
 class _FleetChatState extends State<FleetChat> {
   final _input = TextEditingController();
 
+
   @override
   void dispose() {
     _input.dispose();
@@ -399,23 +400,87 @@ class _FleetChatState extends State<FleetChat> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SelectableText(
-            (meta['gate'] ?? 'gate')
-                .toString()
-                .toUpperCase()
-                .replaceAll('_', ' '),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFFC4E7FF),
-              letterSpacing: 0.5,
-            ),
+          // Gate header with icon
+          Row(
+            children: [
+              Icon(
+                (meta['gate']?.toString() ?? '') == 'repo_decision'
+                    ? Icons.folder_copy_outlined
+                    : Icons.lan_outlined,
+                size: 16,
+                color: const Color(0xFF38BDF8),
+              ),
+              const SizedBox(width: 8),
+              SelectableText(
+                (meta['gate'] ?? 'gate').toString().toUpperCase().replaceAll('_', ' '),
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFC4E7FF),
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           SelectableText(
             gate['prompt']?.toString() ?? 'Review required',
             style: const TextStyle(fontSize: 13, color: Color(0xFFD4E4FA)),
           ),
+          // Existing repo info — shown for repo decision gate
+          if ((meta['gate']?.toString() ?? '') == 'repo_decision') ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF020617).withAlpha(150),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF38BDF8).withAlpha(40)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 12, color: Color(0xFF38BDF8)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Existing repository found:',
+                        style: TextStyle(fontSize: 10, color: Color(0xFF87929A), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 4),
+                  Builder(
+                    builder: (context) {
+                      final existingRepo = (meta['existing_repo'] as Map<String, dynamic>? ?? {});
+                      final pendingExisting = (widget.pendingGate['existing_repo'] as Map<String, dynamic>? ?? {});
+                      final repo = existingRepo.isNotEmpty ? existingRepo : pendingExisting;
+                      final repoName = (repo['repo_name'] ?? 'n/a').toString();
+                      final webUrl = (repo['web_url'] ?? '').toString();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SelectableText(
+                            repoName,
+                            style: TextStyle(fontSize: 12, color: Color(0xFFD4E4FA), fontWeight: FontWeight.w700),
+                          ),
+                          if (webUrl.isNotEmpty)
+                            InkWell(
+                              onTap: () => widget.onLaunchUrl(webUrl),
+                              child: Text(
+                                webUrl,
+                                style: TextStyle(fontSize: 10, color: Color(0xFF38BDF8), decoration: TextDecoration.underline),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (arch.isNotEmpty) ...[
             const SizedBox(height: 8),
             SelectableText(

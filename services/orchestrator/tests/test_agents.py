@@ -41,6 +41,7 @@ from app.schemas import (
     SubmissionPackage,
 )
 from app.tools import Handoff, RequestInput, ToolContext
+from app.fleet_workflow.core import CEO_REPO_DECISION_GATE
 
 
 def _fake_dart(endpoint_path: str, payload=None, *args, **kwargs) -> dict:
@@ -342,10 +343,11 @@ class TestOrchestratorFleet(unittest.TestCase):
         self.assertNotIn("gitlab_repo", context.state)
         self.assertEqual(context.state.get("pipeline_status"), "skipped_by_ceo")
 
-    def test_ceo_decision_custom_idea_adopts_existing_repo(self):
-        """The 'repo already exists' idempotency branch must adopt the existing
-        repo instead of failing — and must not crash on the lazy SESSION_DB
-        import (regression: NameError before planner.py imported it)."""
+    def test_ceo_decision_custom_idea_repo_already_exists_raises_repo_gate(self):
+        """When provisioning reports 'already exists', process_ceo_decision must
+        raise RequestInput for the Repo Decision Gate (CEO chooses between using
+        the existing repo or creating a fresh one under a different name) —
+        and must not crash on the lazy SESSION_DB import."""
         context = ToolContext(session_id="test_session_005")
         scout = ScoutAgent()
         scout_result = scout.run(self.mock_feed, context)
@@ -364,21 +366,23 @@ class TestOrchestratorFleet(unittest.TestCase):
         import app.agents.planner as planner_module
 
         with patch.object(planner_module, "execute_dart_task", _dart_repo_already_exists):
-            result = planner.process_ceo_decision(
-                decision_choice="custom_idea",
-                custom_prompt="Build a procedural 3D web engine with Dart + Flutter.",
-                git_provider="github",
-                custom_repo_name="dup-repo",
-                context=context,
-            )
+            with self.assertRaises(RequestInput) as cm:
+                planner.process_ceo_decision(
+                    decision_choice="custom_idea",
+                    custom_prompt="Build a procedural 3D web engine with Dart + Flutter.",
+                    git_provider="github",
+                    custom_repo_name="dup-repo",
+                    context=context,
+                )
 
-        self.assertEqual(result.status, "approved_and_provisioned")
-        repo = context.state["git_repo"]
-        self.assertEqual(repo["status"], "provisioned")  # adopted
-        self.assertEqual(repo["repo_name"], "dup-repo")
-        # Adopted fallback web_url is derived from owner + repo name.
-        self.assertIn("dup-repo", repo["web_url"])
-        self.assertEqual(context.state["selected_idea"]["repo_name"], "dup-repo")
+        req = cm.exception
+        self.assertEqual(req.state_key, CEO_REPO_DECISION_GATE)
+        option_values = [o["value"] for o in req.options]
+        self.assertIn("use_existing_repo", option_values)
+        self.assertIn("create_new_repo", option_values)
+        self.assertEqual(context.state["existing_repo"]["repo_name"], "dup-repo")
+        self.assertIn("dup-repo", context.state["existing_repo"]["web_url"])
+        self.assertEqual(req.metadata["existing_repo"]["web_url"], context.state["existing_repo"]["web_url"])
 
 
 if __name__ == "__main__":
