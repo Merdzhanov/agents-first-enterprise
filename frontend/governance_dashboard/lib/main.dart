@@ -119,6 +119,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _newIdeaController = TextEditingController();
   bool _isSubmittingIdea = false;
   bool _isRunningScheduledDiscovery = false;
+  bool _pureIdeaMode = false;
 
   List<Map<String, dynamic>> _logs = [
     {
@@ -556,7 +557,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         interruptId != 'ceo_code_review_gate' &&
         interruptId != 'ceo_deployment_gate';
 
-    if (_sessionId.isNotEmpty && _pendingHitlData.isNotEmpty) {
+    if (!_pureIdeaMode &&
+        _sessionId.isNotEmpty &&
+        _pendingHitlData.isNotEmpty) {
       if (atProposalGate) {
         await _dispatchCustomDirection(trimmed);
       } else {
@@ -566,7 +569,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       return;
     }
-    if (_sessionId.isNotEmpty && (_ideaA.isNotEmpty || _ideaB.isNotEmpty)) {
+    if (!_pureIdeaMode &&
+        _sessionId.isNotEmpty &&
+        (_ideaA.isNotEmpty || _ideaB.isNotEmpty)) {
       // Proposals are on screen but the pending-gate mirror has not arrived
       // via telemetry yet — the session is still paused at the proposal gate.
       await _dispatchCustomDirection(trimmed);
@@ -579,7 +584,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
     final preview =
         trimmed.length > 80 ? '${trimmed.substring(0, 80)}...' : trimmed;
-    _addLog('CEO Directive: $preview', 'ceo');
+    _addLog(
+        _pureIdeaMode ? 'CEO Pure Idea: $preview' : 'CEO Directive: $preview',
+        'ceo');
 
     try {
       final res = await _api.submitSystemPrompt(
@@ -594,9 +601,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _sessionId = newSessionId;
         }
         _isLoading = false;
-        _statusText = 'Fleet executing CEO directive...';
+        _statusText = _pureIdeaMode
+            ? 'Pure idea accepted — new session executing, Architect synthesizing...'
+            : 'Fleet executing CEO directive...';
         _ideaA = {};
         _ideaB = {};
+        _pureIdeaMode = false;
       });
       _addLog('ADK Runner: $statusMsg', 'system');
       _addLog(
@@ -856,6 +866,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
               onApproveConcept: _approveConcept,
               onLaunchUrl: _launchExternalUrl,
+              pureIdeaMode: _pureIdeaMode,
+              onPureIdeaModeChanged: (v) => setState(() => _pureIdeaMode = v),
             ),
           ),
           const SizedBox(height: 24),

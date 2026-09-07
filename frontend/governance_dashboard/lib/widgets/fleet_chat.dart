@@ -17,6 +17,8 @@ class FleetChat extends StatefulWidget {
   final void Function(String conceptName, String defaultRepo,
       {String? decisionChoiceOverride, String? feedback}) onApproveConcept;
   final ValueChanged<String> onLaunchUrl;
+  final bool pureIdeaMode;
+  final ValueChanged<bool> onPureIdeaModeChanged;
 
   const FleetChat({
     super.key,
@@ -31,6 +33,8 @@ class FleetChat extends StatefulWidget {
     this.selectedHackathon,
     required this.onApproveConcept,
     required this.onLaunchUrl,
+    required this.pureIdeaMode,
+    required this.onPureIdeaModeChanged,
   });
 
   @override
@@ -457,9 +461,13 @@ class _FleetChatState extends State<FleetChat> {
         color: const Color(0xFF0A1520),
         border: Border(top: BorderSide(color: Colors.white.withAlpha(15))),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
         children: [
+          _pureIdeaToggle(),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
           Expanded(
             child: Container(
               constraints: const BoxConstraints(
@@ -491,16 +499,17 @@ class _FleetChatState extends State<FleetChat> {
                       height: 1.45,
                       color: Color(0xFFD4E4FA),
                     ),
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Enter directive, complex prompt, or feedback for the fleet (multiline supported)...\nPress Send or ⌘+Enter to submit.',
-                      hintStyle: TextStyle(
+                    decoration: InputDecoration(
+                      hintText: widget.pureIdeaMode
+                          ? 'PURE IDEA MODE — your text launches a standalone build in a new session, without any hackathon context...\nPress Send or ⌘+Enter to submit.'
+                          : 'Enter directive, complex prompt, or feedback for the fleet (multiline supported)...\nPress Send or ⌘+Enter to submit.',
+                      hintStyle: const TextStyle(
                         fontFamily: 'monospace',
                         color: Color(0xFF64748B),
                         fontSize: 11,
                       ),
                       isDense: true,
-                      contentPadding: EdgeInsets.all(10),
+                      contentPadding: const EdgeInsets.all(10),
                       border: InputBorder.none,
                     ),
                   ),
@@ -544,6 +553,54 @@ class _FleetChatState extends State<FleetChat> {
             ),
           ),
         ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Toggle chip: when active, the next chat message is dispatched as a PURE
+  /// idea — a standalone build in a new session with NO hackathon context.
+  Widget _pureIdeaToggle() {
+    final active = widget.pureIdeaMode;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: InkWell(
+        onTap: () => widget.onPureIdeaModeChanged(!active),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: active
+                ? const Color(0xFFFBBF24).withAlpha(30)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: active ? const Color(0xFFFBBF24) : Colors.white24,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                active ? Icons.lightbulb : Icons.lightbulb_outline,
+                size: 13,
+                color: const Color(0xFFFBBF24),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'PURE IDEA — no hackathon context',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: active
+                      ? const Color(0xFFFBBF24)
+                      : const Color(0xFF87929A),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
