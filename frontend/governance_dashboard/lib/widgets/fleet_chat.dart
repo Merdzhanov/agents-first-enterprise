@@ -440,7 +440,7 @@ class _FleetChatState extends State<FleetChat> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  const Row(
                     children: [
                       Icon(Icons.info_outline, size: 12, color: Color(0xFF38BDF8)),
                       SizedBox(width: 4),
@@ -450,7 +450,7 @@ class _FleetChatState extends State<FleetChat> {
                       ),
                     ],
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Builder(
                     builder: (context) {
                       final existingRepo = (meta['existing_repo'] as Map<String, dynamic>? ?? {});
@@ -463,14 +463,14 @@ class _FleetChatState extends State<FleetChat> {
                         children: [
                           SelectableText(
                             repoName,
-                            style: TextStyle(fontSize: 12, color: Color(0xFFD4E4FA), fontWeight: FontWeight.w700),
+                            style: const TextStyle(fontSize: 12, color: Color(0xFFD4E4FA), fontWeight: FontWeight.w700),
                           ),
                           if (webUrl.isNotEmpty)
                             InkWell(
                               onTap: () => widget.onLaunchUrl(webUrl),
                               child: Text(
                                 webUrl,
-                                style: TextStyle(fontSize: 10, color: Color(0xFF38BDF8), decoration: TextDecoration.underline),
+                                style: const TextStyle(fontSize: 10, color: Color(0xFF38BDF8), decoration: TextDecoration.underline),
                               ),
                             ),
                         ],
